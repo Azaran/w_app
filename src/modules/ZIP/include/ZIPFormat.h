@@ -43,17 +43,22 @@ enum ZIPEncType{
 struct ZIPInitData{
     ZIPInitData();
     ZIPInitData(const ZIPInitData &orig);
+    ZIPEncType type;
     uint32_t crc32;
     uint32_t dataLen;
     uint32_t uncompressedSize;
     uint16_t keyLength;
     uint16_t compression;
-    uint8_t verifier[2];
+    uint16_t encSize;
+    uint16_t erdSize;
+    uint16_t ivSize;
     uint8_t *encData;
-    uint8_t authCode[10];
-    ZIPEncType type;
+    uint8_t *erdData;
+    uint8_t *ivData;
     uint8_t saltLen;
     uint8_t salt[16];
+    uint8_t verifier[2];
+    uint8_t authCode[10];
     uint8_t streamBuffer[12];
 };
 

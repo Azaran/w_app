@@ -71,9 +71,6 @@ ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream) {
     stream->read(reinterpret_cast<char*>(&ext_fields_len),sizeof(uint16_t));
     stream->seekg(filename_len,stream->cur); // skip filename
 	    
-    std::cout << std::hex << flags << std::endl;
-    std::cout << std::bitset<16>(flags) << std::endl;
-    
     if(!(flags & 0x1)){ // check encryption flag not set
         data.type = NONE;
     }else{
@@ -128,29 +125,26 @@ ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream) {
 	}
 	else	// strong encryption set 
 	{
-	    uint16_t ivsize, algid, bitlen, erdsize, vsize, dhflags;
-	    uint32_t dhsize, vcrc, reserved1;
-	    uint8_t *ivdata, *erddata, *vdata;
+	    uint16_t algid;
+	    uint32_t reserved1;
 	   
-	    // TODO:
-	    //	    Ulozit nove polozky do struktury data, ktera se vraci k na konci funkce
-	    
 	    // we start after file_name
 	    stream->seekg(ext_fields_len, stream->cur);	    // skip extra fields
-	    stream->read(reinterpret_cast<char*>(&ivsize),sizeof(uint16_t));
-	    ivdata = new uint8_t[ivsize];
-	    stream->read(reinterpret_cast<char*>(ivdata),ivsize);
 	    
-	    stream->read(reinterpret_cast<char*>(&dhsize),sizeof(uint32_t));
-	    stream->seekg(2,stream->cur);   // format (always 3)
+	    stream->read(reinterpret_cast<char*>(&data.ivSize),sizeof(uint16_t));
+	    data.ivData = new uint8_t[data.ivSize];
+	    stream->read(reinterpret_cast<char*>(data.ivData),data.ivSize);
+	    
+	    stream->seekg(4, stream->cur);  // Size
+	    stream->seekg(2, stream->cur);  // Format (always 3)
+
 	    stream->read(reinterpret_cast<char*>(&algid),sizeof(uint16_t));
-	    stream->read(reinterpret_cast<char*>(&bitlen),sizeof(uint16_t));
-	    stream->read(reinterpret_cast<char*>(&dhflags),sizeof(uint16_t));
+	    stream->read(reinterpret_cast<char*>(&data.keyLength),sizeof(uint16_t));
+	    stream->seekg(2, stream->cur);  // Flags
 	    
-	    stream->read(reinterpret_cast<char*>(&erdsize),sizeof(uint16_t));
-	    std::cout << std::hex << erdsize << std::endl;
-	    erddata = new uint8_t[erdsize];
-	    stream->read(reinterpret_cast<char*>(erddata),erdsize);
+	    stream->read(reinterpret_cast<char*>(&data.erdSize),sizeof(uint16_t));
+	    data.erdData = new uint8_t[data.erdSize];
+	    stream->read(reinterpret_cast<char*>(data.erdData),data.erdSize);
 	    
 	    stream->read(reinterpret_cast<char*>(&reserved1),sizeof(uint32_t));
 	    if (reserved1 > 0)
@@ -161,14 +155,20 @@ ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream) {
 		stream->seekg(res2size, stream->cur);    // skip first 4 bytes or Reserved2
 	    }
 	    
-	    stream->read(reinterpret_cast<char*>(&vsize),sizeof(uint16_t));
-	    vdata = new uint8_t[(vsize-4)];
-	    stream->read(reinterpret_cast<char*>(vdata),vsize-4);
-	    stream->read(reinterpret_cast<char*>(&vcrc),sizeof(uint32_t));
+	    stream->read(reinterpret_cast<char*>(&data.encSize),sizeof(uint16_t));
+	    data.encSize -= 4;	// minus size of VCRC32
+	    data.encData = new uint8_t[data.encSize];
+	    stream->read(reinterpret_cast<char*>(data.encData),data.encSize);
+	    stream->read(reinterpret_cast<char*>(&data.crc32),sizeof(uint32_t));
 	    stream->seekg(compressed_size, stream->cur);    // skip file data
 	
 	    if (flags & 0x8)
 		stream->seekg(12, stream->cur);    // skip data descriptor
+
+	    if (algid == 0x6601 || algid == 0x6603 || algid == 0x6609)
+		data.type = TDES;
+	    else if (algid >= 0x660E && algid <= 0x6610)
+		data.type = SAES;
 	}
 	
 	if(data.type ==  WZAES){
@@ -215,14 +215,25 @@ void ZIPFormat::init(std::string& filename){
         std::cout << "======= ZIP information =======" << std::endl;
         if (data[0].type == WZAES) {
             std::cout << "Encryption method: WinZIP AES" << std::endl;
-            std::cout << "Key length: " << (int)(data[0].keyLength) << std::endl;
-            std::cout << "Salt length: " << (int)(data[0].saltLen) << std::endl;
-        } else if (data[0].type == PKSTREAM) {
+            std::cout << "Key length: " << (int)(data[0].keyLength) << "b" << std::endl;
+            std::cout << "Salt length: " << (int)(data[0].saltLen)*8 << "b" << std::endl;
+        } 
+	else if (data[0].type == PKSTREAM) 
             std::cout << "Encryption method: ZIP 2.0 (Legacy) PKZIP" << std::endl;
-            
-        } else {
+
+	else if (data[0].type == SAES) {
+	    std::cout << "Encryption method: Standard AES" << std::endl;
+            std::cout << "Key length: " << (int)(data[0].keyLength) << "b" << std::endl;
+            std::cout << "IV length: " << (int)(data[0].ivSize)*8 << "b" << std::endl;
+	}
+	else if (data[0].type == TDES) {
+	    std::cout << "Encryption method: 3DES" << std::endl;
+            std::cout << "Key length: " << (int)(data[0].keyLength) << "b" << std::endl;
+            std::cout << "IV length: " << (int)(data[0].ivSize)*8 << "b" << std::endl;
+	}
+	else 
             std::cout << "Encryption method is currently not supported by Wrathion." << std::endl;
-        }
+        
         std::cout << "===============================" << std::endl;
     }
     stream.close();
@@ -261,6 +272,8 @@ CrackerFactory* ZIPFormat::getCPUCracker(){
                 return new ZIPPKCrackerCPUFactory(&data);
             }else
                 return NULL;
+        case SAES: return NULL; // new ZIPStAESCrackerCPUFactory(&data);
+        case TDES: return NULL; // new ZIPTDESCrackerCPUFactory(&data);
         default: return NULL;
     }
 }
@@ -282,17 +295,22 @@ ZIPInitData::ZIPInitData(){
 }
 
 ZIPInitData::ZIPInitData(const ZIPInitData& orig){
-    this->crc32 = orig.crc32;
-    this->keyLength = orig.keyLength;
     this->type = orig.type;
-    ::memcpy(this->verifier,orig.verifier,2);
+    this->crc32 = orig.crc32;
+    this->dataLen = orig.dataLen;
+    this->uncompressedSize = orig.uncompressedSize;
+    this->keyLength = orig.keyLength;
+    this->compression = orig.compression;
+    this->encSize = orig.encSize;
+    this->erdSize = orig.erdSize;
+    this->ivSize = orig.ivSize;
+    this->encData = orig.encData;
+    this->erdData = orig.erdData;
+    this->ivData = orig.ivData;
     this->saltLen = orig.saltLen;
     ::memcpy(this->salt,orig.salt,16);
+    ::memcpy(this->verifier,orig.verifier,2);
     ::memcpy(this->authCode,orig.authCode,10);
     ::memcpy(this->streamBuffer,orig.streamBuffer,12);
-    this->dataLen = orig.dataLen;
-    this->encData = orig.encData;
-    this->uncompressedSize = orig.uncompressedSize;
-    this->compression = orig.compression;
 }
 
