@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2014 Jan Schmied
+ * Copyright (C) 2014 Jan Schmied, Vojtech Vecera
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy 
  * of this software and associated documentation files (the "Software"), to deal 
@@ -26,13 +26,17 @@
 
 #include "FileFormat.h"
 #include <vector>
+#include <cassert>
+#include <bitset>
 
 /**
  * Type of file encryption
  */
 enum ZIPEncType{
     PKSTREAM,
-    AES,
+    WZAES,	// WinZIP AES
+    SAES,	// AES from APPNOTE.TXT
+    TDES,
     NONE
 };
 

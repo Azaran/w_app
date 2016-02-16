@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2014 Jan Schmied, Radek Hranicky
+ * Copyright (C) 2014 Jan Schmied, Radek Hranicky, Vojtech Vecera
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy 
  * of this software and associated documentation files (the "Software"), to deal 
@@ -52,14 +52,15 @@ ZIPFormat::ZIPFormat() {
 ZIPFormat::ZIPFormat(const ZIPFormat& orig):FileFormat(orig) {
 }
 
-ZIPFormat::~ZIPFormat() {
+ZIPFormat::~ZIPFormat(){   
 }
 
 ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream) {
     uint16_t ext_fields_len,filename_len,flags;
-    uint32_t compressed_size;
+    uint32_t compressed_size, fsignature;
     ZIPInitData data;
-    stream->seekg(6,stream->cur); // skip signature, min version for decompress
+    stream->read(reinterpret_cast<char*>(&fsignature),sizeof(uint32_t)); // skip signature, min version for decompress
+    stream->seekg(2,stream->cur); // skip version
     stream->read(reinterpret_cast<char*>(&flags),sizeof(uint16_t));
     stream->read(reinterpret_cast<char*>(&data.compression),sizeof(uint16_t));
     stream->seekg(4,stream->cur); // skip date and time
@@ -69,69 +70,126 @@ ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream) {
     stream->read(reinterpret_cast<char*>(&filename_len),sizeof(uint16_t));
     stream->read(reinterpret_cast<char*>(&ext_fields_len),sizeof(uint16_t));
     stream->seekg(filename_len,stream->cur); // skip filename
+	    
+    std::cout << std::hex << flags << std::endl;
+    std::cout << std::bitset<16>(flags) << std::endl;
     
     if(!(flags & 0x1)){ // check encryption flag not set
         data.type = NONE;
     }else{
-        if(data.compression == 99){ // AES
-            data.type = AES;
-            uint16_t len = ext_fields_len;
-            while(len > 0){
-                uint16_t ext_type;
-                uint16_t ext_len;
-                stream->read(reinterpret_cast<char*>(&ext_type),sizeof(uint16_t));
-                stream->read(reinterpret_cast<char*>(&ext_len),sizeof(uint16_t));
-                if(ext_type == 0x9901){
-                    stream->seekg(4,stream->cur); // skip 4 boring bytes
-                    uint8_t temp;
-                    stream->read(reinterpret_cast<char*>(&temp),sizeof(uint8_t));
-                    switch(temp){
-                        case 1:
-                            data.keyLength = 128;
-                            data.saltLen = 8;
-                            break;
-                        case 2:
-                            data.keyLength = 192;
-                            data.saltLen = 12;
-                            break;
-                        case 3:
-                            data.keyLength = 256;
-                            data.saltLen = 16;
-                            break;
-                    }
-                    // 2 bytes of actual compression method
-                    stream->seekg(2,stream->cur);
-                }else{
-                    // skip unknown extension
-                    stream->seekg(ext_len,stream->cur);
-                }
-                len-=ext_len+4;
-            }
-            
-        }else{
-            data.type = PKSTREAM;
-            uint16_t len = ext_fields_len;
-            while(len > 0){
-                uint16_t ext_len;
-                stream->seekg(2,stream->cur);
-                stream->read(reinterpret_cast<char*>(&ext_len),sizeof(uint16_t));
-                stream->seekg(ext_len,stream->cur);
-                len-=ext_len+4;
-            }
-        }
-        if(data.type == AES){
-            stream->read(reinterpret_cast<char*>(&data.salt),data.saltLen);
-            stream->read(reinterpret_cast<char*>(&data.verifier),sizeof(uint8_t)*2);
-            data.dataLen = compressed_size-data.saltLen-2-10;
-            data.encData = new uint8_t[data.dataLen];
-            stream->read(reinterpret_cast<char*>(data.encData),data.dataLen);
-            stream->read(reinterpret_cast<char*>(data.authCode),10);
-        }else if(data.type == PKSTREAM){
-            stream->read(reinterpret_cast<char*>(data.streamBuffer),12);
-            data.dataLen = compressed_size-12;
-            data.encData = new uint8_t[data.dataLen];
-            stream->read(reinterpret_cast<char*>(data.encData),data.dataLen);
-        }
+	if (!(flags & 0x40)) // check strong encryption flag not set
+	{
+            if(data.compression == 99){ // WinZIP AES
+		data.type = WZAES;
+		uint16_t len = ext_fields_len;
+		while(len > 0){
+		    uint16_t ext_type;
+		    uint16_t ext_len;
+		    stream->read(reinterpret_cast<char*>(&ext_type),sizeof(uint16_t));
+		    stream->read(reinterpret_cast<char*>(&ext_len),sizeof(uint16_t));
+		    if(ext_type == 0x9901){
+			stream->seekg(4,stream->cur); // skip 4 boring bytes
+			uint8_t temp;
+			stream->read(reinterpret_cast<char*>(&temp),sizeof(uint8_t));
+			switch(temp){
+			    case 1:
+				data.keyLength = 128;
+				data.saltLen = 8;
+				break;
+			    case 2:
+				data.keyLength = 192;
+				data.saltLen = 12;
+				break;
+			    case 3:
+				data.keyLength = 256;
+				data.saltLen = 16;
+				break;
+			}
+			// 2 bytes of actual compression method
+			stream->seekg(2,stream->cur);
+		    }else{
+			// skip unknown extension
+			stream->seekg(ext_len,stream->cur);
+		    }
+		    len-=ext_len+4;
+		}
+
+	    }else{
+		data.type = PKSTREAM;
+		uint16_t len = ext_fields_len;
+		while(len > 0){
+		    uint16_t ext_len;
+		    stream->seekg(2,stream->cur);
+		    stream->read(reinterpret_cast<char*>(&ext_len),sizeof(uint16_t));
+		    stream->seekg(ext_len,stream->cur);
+		    len-=ext_len+4;
+		}
+	    }
+	}
+	else	// strong encryption set 
+	{
+	    uint16_t ivsize, algid, bitlen, erdsize, vsize, dhflags;
+	    uint32_t dhsize, vcrc, reserved1;
+	    uint8_t *ivdata, *erddata, *vdata;
+	   
+	    // TODO:
+	    //	    Ulozit nove polozky do struktury data, ktera se vraci k na konci funkce
+	    
+	    // we start after file_name
+	    stream->seekg(ext_fields_len, stream->cur);	    // skip extra fields
+	    stream->read(reinterpret_cast<char*>(&ivsize),sizeof(uint16_t));
+	    ivdata = new uint8_t[ivsize];
+	    stream->read(reinterpret_cast<char*>(ivdata),ivsize);
+	    
+	    stream->read(reinterpret_cast<char*>(&dhsize),sizeof(uint32_t));
+	    stream->seekg(2,stream->cur);   // format (always 3)
+	    stream->read(reinterpret_cast<char*>(&algid),sizeof(uint16_t));
+	    stream->read(reinterpret_cast<char*>(&bitlen),sizeof(uint16_t));
+	    stream->read(reinterpret_cast<char*>(&dhflags),sizeof(uint16_t));
+	    
+	    stream->read(reinterpret_cast<char*>(&erdsize),sizeof(uint16_t));
+	    std::cout << std::hex << erdsize << std::endl;
+	    erddata = new uint8_t[erdsize];
+	    stream->read(reinterpret_cast<char*>(erddata),erdsize);
+	    
+	    stream->read(reinterpret_cast<char*>(&reserved1),sizeof(uint32_t));
+	    if (reserved1 > 0)
+	    {
+		uint16_t res2size;
+		stream->seekg(4, stream->cur);    // skip first 4 bytes or Reserved2
+		stream->read(reinterpret_cast<char*>(&res2size),sizeof(uint16_t));
+		stream->seekg(res2size, stream->cur);    // skip first 4 bytes or Reserved2
+	    }
+	    
+	    stream->read(reinterpret_cast<char*>(&vsize),sizeof(uint16_t));
+	    vdata = new uint8_t[(vsize-4)];
+	    stream->read(reinterpret_cast<char*>(vdata),vsize-4);
+	    stream->read(reinterpret_cast<char*>(&vcrc),sizeof(uint32_t));
+	    stream->seekg(compressed_size, stream->cur);    // skip file data
+	
+	    if (flags & 0x8)
+		stream->seekg(12, stream->cur);    // skip data descriptor
+	}
+	
+	if(data.type ==  WZAES){
+	    stream->read(reinterpret_cast<char*>(&data.salt),data.saltLen);
+	    stream->read(reinterpret_cast<char*>(&data.verifier),sizeof(uint8_t)*2);
+	    data.dataLen = compressed_size-data.saltLen-2-10;
+	    data.encData = new uint8_t[data.dataLen];
+	    stream->read(reinterpret_cast<char*>(data.encData),data.dataLen);
+	    stream->read(reinterpret_cast<char*>(data.authCode),10);
+	}else if(data.type == PKSTREAM){
+	    stream->read(reinterpret_cast<char*>(data.streamBuffer),12);
+	    data.dataLen = compressed_size-12;
+	    data.encData = new uint8_t[data.dataLen];
+	    stream->read(reinterpret_cast<char*>(data.encData),data.dataLen);
+	}
+	else if(data.type == SAES)
+	{
+	}
+	else if(data.type == TDES)
+	{
+	}
     }
     return data;
 }
@@ -155,8 +213,8 @@ void ZIPFormat::init(std::string& filename){
     if (verbose) {
         // Print ZIP encryption information obtained from the file
         std::cout << "======= ZIP information =======" << std::endl;
-        if (data[0].type == AES) {
-            std::cout << "Encryption method: AES" << std::endl;
+        if (data[0].type == WZAES) {
+            std::cout << "Encryption method: WinZIP AES" << std::endl;
             std::cout << "Key length: " << (int)(data[0].keyLength) << std::endl;
             std::cout << "Salt length: " << (int)(data[0].saltLen) << std::endl;
         } else if (data[0].type == PKSTREAM) {
@@ -197,7 +255,7 @@ void ZIPFormat::filterData() {
 
 CrackerFactory* ZIPFormat::getCPUCracker(){
     switch(data[0].type){
-        case AES: return new ZIPAESCrackerCPUFactory(&data);
+        case WZAES: return new ZIPAESCrackerCPUFactory(&data);
         case PKSTREAM: 
             if(data[0].compression == 8){ // cracking only DEFLATE
                 return new ZIPPKCrackerCPUFactory(&data);
@@ -209,7 +267,7 @@ CrackerFactory* ZIPFormat::getCPUCracker(){
 
 CrackerFactory* ZIPFormat::getGPUCracker(){
     switch(data[0].type){
-        case AES: return new ZIPAESCrackerGPUFactory(&data);
+        case WZAES: return new ZIPAESCrackerGPUFactory(&data);
         case PKSTREAM: 
             if(data[0].compression == 8){ // cracking only DEFLATE
                 return new ZIPPKCrackerGPUFactory(&data);

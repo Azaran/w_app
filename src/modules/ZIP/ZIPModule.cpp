@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2014 Jan Schmied
+ * Copyright (C) 2014 Jan Schmied, 2016 Vojtech Vecera
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy 
  * of this software and associated documentation files (the "Software"), to deal 
@@ -41,7 +41,7 @@ public:
     }
 
     virtual std::string getDescription(){
-        return "Module supports cracking ZIP files encrypted with PKZIP stream cipher, AES128, AES192 and AES256.";
+        return "Module supports cracking ZIP files encrypted with PKZIP stream cipher, AES128, AES192, AES256 and 3DES.";
     }
     
 
@@ -51,7 +51,7 @@ public:
     
 
     virtual std::string getVersionText(){
-        return "1.0";
+        return "2.0";
     }
 
 };
