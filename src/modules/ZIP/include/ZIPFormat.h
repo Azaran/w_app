@@ -26,7 +26,6 @@
 
 #include "FileFormat.h"
 #include <vector>
-#include <cassert>
 #include <bitset>
 
 /**

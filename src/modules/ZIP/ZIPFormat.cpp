@@ -37,7 +37,7 @@ typedef CrackerFactoryTemplate<ZIPPKCrackerCPU,std::vector<ZIPInitData>*> ZIPPKC
 typedef CrackerFactoryTemplate<ZIPPKCrackerGPU,std::vector<ZIPInitData>*, true> ZIPPKCrackerGPUFactory;
 typedef CrackerFactoryTemplate<ZIPAESCrackerGPU,std::vector<ZIPInitData>*, true> ZIPAESCrackerGPUFactory;
 
-ZIPFormat::ZIPFormat() {
+ZIPFormat::ZIPFormat(){
     signature = "PK\x03\x04";
     ext = "zip";
     name = "ZIP";
@@ -49,13 +49,13 @@ ZIPFormat::ZIPFormat() {
     is_encrypted = true;
 }
 
-ZIPFormat::ZIPFormat(const ZIPFormat& orig):FileFormat(orig) {
+ZIPFormat::ZIPFormat(const ZIPFormat& orig):FileFormat(orig){
 }
 
 ZIPFormat::~ZIPFormat(){   
 }
 
-ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream) {
+ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream){
     uint16_t ext_fields_len,filename_len,flags;
     uint32_t compressed_size, fsignature;
     ZIPInitData data;
@@ -74,8 +74,7 @@ ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream) {
     if(!(flags & 0x1)){ // check encryption flag not set
         data.type = NONE;
     }else{
-	if (!(flags & 0x40)) // check strong encryption flag not set
-	{
+	if (!(flags & 0x40)){	// check strong encryption flag not set
             if(data.compression == 99){ // WinZIP AES
 		data.type = WZAES;
 		uint16_t len = ext_fields_len;
@@ -122,9 +121,7 @@ ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream) {
 		    len-=ext_len+4;
 		}
 	    }
-	}
-	else	// strong encryption set 
-	{
+	}else{	// strong encryption set 
 	    uint16_t algid;
 	    uint32_t reserved1;
 	   
@@ -147,12 +144,11 @@ ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream) {
 	    stream->read(reinterpret_cast<char*>(data.erdData),data.erdSize);
 	    
 	    stream->read(reinterpret_cast<char*>(&reserved1),sizeof(uint32_t));
-	    if (reserved1 > 0)
-	    {
+	    if (reserved1 > 0){
 		uint16_t res2size;
-		stream->seekg(4, stream->cur);    // skip first 4 bytes or Reserved2
+		stream->seekg(4, stream->cur);    // skip first 4 bytes of Reserved2
 		stream->read(reinterpret_cast<char*>(&res2size),sizeof(uint16_t));
-		stream->seekg(res2size, stream->cur);    // skip first 4 bytes or Reserved2
+		stream->seekg(res2size, stream->cur);    // skip remaining data in Reserved2
 	    }
 	    
 	    stream->read(reinterpret_cast<char*>(&data.encSize),sizeof(uint16_t));
@@ -184,12 +180,6 @@ ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream) {
 	    data.encData = new uint8_t[data.dataLen];
 	    stream->read(reinterpret_cast<char*>(data.encData),data.dataLen);
 	}
-	else if(data.type == SAES)
-	{
-	}
-	else if(data.type == TDES)
-	{
-	}
     }
     return data;
 }
@@ -206,32 +196,28 @@ void ZIPFormat::init(std::string& filename){
         filterData();
         if(::memcmp(buffer,"PK\x03\x04",4) == 0){
             stream.seekg(-4,stream.cur);
-        }else{
+        }else {
            break;
         }
     }while(true);
-    if (verbose) {
+    if (verbose){
         // Print ZIP encryption information obtained from the file
         std::cout << "======= ZIP information =======" << std::endl;
-        if (data[0].type == WZAES) {
+        if (data[0].type == WZAES){
             std::cout << "Encryption method: WinZIP AES" << std::endl;
             std::cout << "Key length: " << (int)(data[0].keyLength) << "b" << std::endl;
             std::cout << "Salt length: " << (int)(data[0].saltLen)*8 << "b" << std::endl;
-        } 
-	else if (data[0].type == PKSTREAM) 
+        }else if (data[0].type == PKSTREAM){
             std::cout << "Encryption method: ZIP 2.0 (Legacy) PKZIP" << std::endl;
-
-	else if (data[0].type == SAES) {
+	}else if (data[0].type == SAES){
 	    std::cout << "Encryption method: Standard AES" << std::endl;
             std::cout << "Key length: " << (int)(data[0].keyLength) << "b" << std::endl;
             std::cout << "IV length: " << (int)(data[0].ivSize)*8 << "b" << std::endl;
-	}
-	else if (data[0].type == TDES) {
+	}else if (data[0].type == TDES){
 	    std::cout << "Encryption method: 3DES" << std::endl;
             std::cout << "Key length: " << (int)(data[0].keyLength) << "b" << std::endl;
             std::cout << "IV length: " << (int)(data[0].ivSize)*8 << "b" << std::endl;
-	}
-	else 
+	}else 
             std::cout << "Encryption method is currently not supported by Wrathion." << std::endl;
         
         std::cout << "===============================" << std::endl;
@@ -240,7 +226,7 @@ void ZIPFormat::init(std::string& filename){
     is_supported = true;
 }
 
-void ZIPFormat::filterData() {
+void ZIPFormat::filterData(){
     if(data.size() < 2)
         return;
     
@@ -286,6 +272,8 @@ CrackerFactory* ZIPFormat::getGPUCracker(){
                 return new ZIPPKCrackerGPUFactory(&data);
             }else
                 return NULL;
+        case SAES: return NULL; // new ZIPStAESCrackerGPUFactory(&data);
+        case TDES: return NULL; // new ZIPTDESCrackerGPUFactory(&data);
         default: return NULL;
     }
 }

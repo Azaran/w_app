@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2014 Jan Schmied, 2016 Vojtech Vecera
+ * Copyright (C) 2014 Jan Schmied, Vojtech Vecera
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy 
  * of this software and associated documentation files (the "Software"), to deal 
@@ -32,7 +32,7 @@ public:
     }
     
     virtual std::string getAuthor(){
-        return "Jan Schmied";
+        return "Jan Schmied, Vojtech Vecera";
     }
     
 
