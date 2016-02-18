@@ -50,8 +50,8 @@ struct SevenZCoder{
 struct SevenZFolder{
     uint64_t numCoders;
     SevenZCoder *coder;
-    uint64_t numInStreamsTotal;
-    uint64_t numOutStreamsTotal;
+    uint64_t numInStreamsTotal = 0;
+    uint64_t numOutStreamsTotal = 1;
     uint64_t inIndex;
     uint64_t outIndex;
     uint64_t *unPackSize;
@@ -108,6 +108,7 @@ protected:
     SevenZStartHdr readStartHdr(std::ifstream *stream);
     SevenZFolder readFolder(std::ifstream *stream);
     uint64_t SevenZUINT64(std::ifstream *stream);
+    void CRCHdr(std::ifstream *stream, uint64_t numPackStreams);
     void readInitInfo(std::ifstream *stream);
     void readMainHeader(std::ifstream *stream);
     /**
