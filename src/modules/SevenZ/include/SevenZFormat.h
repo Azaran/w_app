@@ -109,8 +109,11 @@ protected:
     SevenZFolder readFolder(std::ifstream *stream);
     uint64_t SevenZUINT64(std::ifstream *stream);
     void CRCHdr(std::ifstream *stream, uint64_t numPackStreams);
+    void PackInfoHdr(std::ifstream *stream);
+    void CodersHdr(std::ifstream *stream);
     void readInitInfo(std::ifstream *stream);
     void readMainHeader(std::ifstream *stream);
+    void readEncHeader(std::ifstream *stream);
     /**
      * Removes all files, except the smallest one
      */
