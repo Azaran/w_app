@@ -24,7 +24,6 @@
 #include "SevenZFormat.h"
 #include "SevenZCrackerCPU.h"
 #include "SevenZCrackerGPU.h"
-#include "Utils.h"
 #include "CrackerFactoryTemplate.tcc"
 #include <fstream>
 #include <cstring>
@@ -118,13 +117,15 @@ SevenZFolder SevenZFormat::readFolder(std::ifstream *stream){
 	// 06 f1 07 01 - 7zAES (AES-256 + SHA-256)
 	
 	if (coder->flags & 0x10){
-	    folder.numInStreamsTotal += coder->numInStreams = SevenZUINT64(stream);
-//	    std::cout << "numInStreams: " << coder->numInStreams << std::endl;
-//	    std::cout << "numInStreamsTotal: " << folder.numInStreamsTotal << std::endl;
-	    
-	    folder.numOutStreamsTotal += coder->numOutStreams = SevenZUINT64(stream);
-//	    std::cout << "numOutStreams: " << coder->numOutStreams << std::endl;
-//	    std::cout << "numOutStreamsTotal: " << folder.numOutStreamsTotal << std::endl;
+	    coder->numInStreams = SevenZUINT64(stream);
+	    folder.numInStreamsTotal += coder->numInStreams;
+	    std::cout << "numInStreams: " << coder->numInStreams << std::endl;
+	    std::cout << "numInStreamsTotal: " << folder.numInStreamsTotal << std::endl;
+
+	    coder->numOutStreams = SevenZUINT64(stream);
+	    folder.numOutStreamsTotal += coder->numOutStreams;
+	    std::cout << "numOutStreams: " << coder->numOutStreams << std::endl;
+	    std::cout << "numOutStreamsTotal: " << folder.numOutStreamsTotal << std::endl;
 	}
 	if (coder->flags & 0x20){
 	    coder->propertySize = SevenZUINT64(stream);
@@ -133,17 +134,19 @@ SevenZFolder SevenZFormat::readFolder(std::ifstream *stream){
 	    stream->read(reinterpret_cast<char*>(&coder->property), coder->propertySize);
 	}
 //	std::cout << "coder->flags: " << std::bitset<8>(coder->flags) << std::endl;
+    std::cout << "numInStreamsTotal: " << folder.numOutStreamsTotal << std::endl;
+    std::cout << "numOutStreamsTotal: " << folder.numOutStreamsTotal << std::endl;
     }
 
-//    std::cout << "numOutStreamsTotal: " << folder.numOutStreamsTotal << std::endl;
+    // TODO: In enc_f2_h1_hdr are 2 extra bytes after coder.properties. Find out what are they for.
+
     for (uint64_t i = 0; i < (folder.numOutStreamsTotal - 1); i++){
 	folder.inIndex = SevenZUINT64(stream);
 	folder.outIndex = SevenZUINT64(stream);
     }
-//    std::cout << "numOutStreamsTotal: " << folder.numOutStreamsTotal << std::endl;
 
-    uint8_t numPackStreams = folder.numInStreamsTotal - (folder.numOutStreamsTotal - 1);
-//    std::cout << "numPackStreams: " << numPackStreams << std::endl;
+    uint64_t numPackStreams = folder.numInStreamsTotal - (folder.numOutStreamsTotal - 1);
+    std::cout << "numPackStreams: " << numPackStreams << std::endl;
     if (numPackStreams > 1){
 	numPackStreams--;
 	folder.index = new uint64_t[numPackStreams];
@@ -167,10 +170,9 @@ void SevenZFormat::CRCHdr(std::ifstream *stream, uint64_t numPackStreams){  // 0
 }
 
 void SevenZFormat::PackInfoHdr(std::ifstream *stream){	// 0x06
-    uint64_t packPos = SevenZUINT64(stream);
-    std::cout << "packPos: " <<  std::bitset<64>(packPos) << std::endl;
+    uint64_t packPos = SevenZUINT64(stream); // offset starting at 0x20 after startHeader
+    packPos += 32;  // += 0x20
     uint64_t numPackStreams = SevenZUINT64(stream);
-    std::cout << "numPackStreams: " <<  numPackStreams << std::endl;
     uint8_t subsubHdrID = 1; // we just have to get into the cycle
     while (subsubHdrID != 0){   // End 
 	stream->read(reinterpret_cast<char*>(&subsubHdrID), 1);
@@ -182,7 +184,6 @@ void SevenZFormat::PackInfoHdr(std::ifstream *stream){	// 0x06
 	}else if (subsubHdrID == 0x0a)	  
 	    CRCHdr(stream, numPackStreams);
     }
-
 }
 
 void SevenZFormat::CodersHdr(std::ifstream *stream){	// 0x07
@@ -239,6 +240,8 @@ void SevenZFormat::readEncHeader(std::ifstream *stream){
 }
 
 void SevenZFormat::readMainHeader(std::ifstream *stream){
+
+    //TODO: gather data when there is no EncHeader but just MainHeader
 }
 
 void SevenZFormat::readInitInfo(std::ifstream *stream){
