@@ -69,13 +69,13 @@ uint64_t SevenZFormat::SevenZUINT64(std::ifstream *stream){
     uint8_t firstByte;
     
     stream->read(reinterpret_cast<char*>(&firstByte), 1);
-//    std::cout << "firstByte: " << std::bitset<8>(firstByte) << std::endl;
+    std::cout << "firstByte: " << std::bitset<8>(firstByte) << std::endl;
     while (firstByte & 0x80){
 	SHL(firstByte);
 	bytes++;
     }
 
-//    std::cout << "bytes: " << bytes << std::endl;
+    std::cout << "bytes: " << bytes << std::endl;
 //    std::cout << "firstByte: " << std::bitset<8>(firstByte) << std::endl;
     uint8_t num[bytes];
     num[bytes - 1] = firstByte >> (bytes - 1);    // MSB
@@ -126,6 +126,10 @@ SevenZFolder SevenZFormat::readFolder(std::ifstream *stream){
 	    folder.numOutStreamsTotal += coder->numOutStreams;
 	    std::cout << "numOutStreams: " << coder->numOutStreams << std::endl;
 	    std::cout << "numOutStreamsTotal: " << folder.numOutStreamsTotal << std::endl;
+	}else {
+	    // TODO: check this in the 7z sources
+	    folder.numInStreamsTotal++;
+	    folder.numOutStreamsTotal++;
 	}
 	if (coder->flags & 0x20){
 	    coder->propertySize = SevenZUINT64(stream);
@@ -138,7 +142,6 @@ SevenZFolder SevenZFormat::readFolder(std::ifstream *stream){
     std::cout << "numOutStreamsTotal: " << folder.numOutStreamsTotal << std::endl;
     }
 
-    // TODO: In enc_f2_h1_hdr are 2 extra bytes after coder.properties. Find out what are they for.
 
     for (uint64_t i = 0; i < (folder.numOutStreamsTotal - 1); i++){
 	folder.inIndex = SevenZUINT64(stream);
@@ -209,9 +212,13 @@ void SevenZFormat::CodersHdr(std::ifstream *stream){	// 0x07
     if (subsubHdrID == 0x0c){
 	for (uint64_t i = 0; i < numFolders; i++){
 	    folder[i].unPackSize = new uint64_t[folder[i].numOutStreamsTotal];
+	    std::cout << "numFolders: " << std::bitset<8>(numFolders) << std::endl;
 	    std::cout << "numOutStreamsTotal: " << std::bitset<8>(folder[i].numOutStreamsTotal) << std::endl;
 	    for (uint64_t j = 0; j < folder[i].numOutStreamsTotal; j++)
+	    {
 		folder[i].unPackSize[j] = SevenZUINT64(stream);
+		std::cout << "unPackSize: " << std::bitset<24>(folder[i].unPackSize[j]) << std::endl;
+	    }
 	}
 	stream->read(reinterpret_cast<char*>(&subsubHdrID), 1);	// CRCs (0x0A)
 	std::cout << "subsubHdrID3: " << std::bitset<8>(subsubHdrID) << std::endl;

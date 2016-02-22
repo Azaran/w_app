@@ -51,7 +51,7 @@ struct SevenZFolder{
     uint64_t numCoders;
     SevenZCoder *coder;
     uint64_t numInStreamsTotal = 0;
-    uint64_t numOutStreamsTotal = 1;
+    uint64_t numOutStreamsTotal = 0;
     uint64_t inIndex;
     uint64_t outIndex;
     uint64_t *unPackSize;
