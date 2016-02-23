@@ -20,46 +20,46 @@
  * SOFTWARE.
  * 
  */
-
-#include "SevenZCrackerCPU.h"
-#include <string.h>
-
-SevenZCrackerCPU::SevenZCrackerCPU(std::vector<SevenZInitData> *data):SevenZCracker(data) {
-    files_count = data->size();
-    high_CRC = new uint8_t[files_count];
-    for(uint32_t i = 0;i<files_count;i++){
-        high_CRC[i] = (*data)[i].crc32 >> 24;
-        if((*data)[i].dataLen > 0){
-            verify_data = &(*data)[i];
-        }
-    }
-}
-
-SevenZCrackerCPU::SevenZCrackerCPU(const SevenZCrackerCPU& orig):SevenZCracker(orig) {
-}
-
-SevenZCrackerCPU::~SevenZCrackerCPU() {
-    delete high_CRC;
-}
-
-CheckResult SevenZCrackerCPU::checkPassword(const std::string* password) {
-    SevenZKeys keys;
-    for(uint32_t i = 0;i< files_count;i++){
-        uint8_t lastb = initKeys(&keys,reinterpret_cast<const unsigned char*>(password->c_str()),password->length(),(*data)[i].streamBuffer);
-        if(lastb != high_CRC[i]){
-            break;
-        }else if(i == files_count-1){
-            initKeys(&keys,reinterpret_cast<const unsigned char*>(password->c_str()),password->length(),verify_data->streamBuffer);
-            if(verify(&keys,verify_data)){
-                return CR_PASSWORD_MATCH;
-            }
-        }
-    }
-    return CR_PASSWORD_WRONG;
-}
-
-void SevenZCrackerCPU::sharedDataInit() {
-    createCRC32Table();
-
-}
-
+// 
+// #include "SevenZCrackerCPU.h"
+// #include <string.h>
+// 
+// SevenZCrackerCPU::SevenZCrackerCPU(std::vector<SevenZInitData> *data):SevenZCracker(data) {
+//     files_count = data->size();
+//     high_CRC = new uint8_t[files_count];
+//     for(uint32_t i = 0;i<files_count;i++){
+//         high_CRC[i] = (*data)[i].crc32 >> 24;
+//         if((*data)[i].dataLen > 0){
+//             verify_data = &(*data)[i];
+//         }
+//     }
+// }
+// 
+// SevenZCrackerCPU::SevenZCrackerCPU(const SevenZCrackerCPU& orig):SevenZCracker(orig) {
+// }
+// 
+// SevenZCrackerCPU::~SevenZCrackerCPU() {
+//     delete high_CRC;
+// }
+// 
+// CheckResult SevenZCrackerCPU::checkPassword(const std::string* password) {
+//     SevenZKeys keys;
+//     for(uint32_t i = 0;i< files_count;i++){
+//         uint8_t lastb = initKeys(&keys,reinterpret_cast<const unsigned char*>(password->c_str()),password->length(),(*data)[i].streamBuffer);
+//         if(lastb != high_CRC[i]){
+//             break;
+//         }else if(i == files_count-1){
+//             initKeys(&keys,reinterpret_cast<const unsigned char*>(password->c_str()),password->length(),verify_data->streamBuffer);
+//             if(verify(&keys,verify_data)){
+//                 return CR_PASSWORD_MATCH;
+//             }
+//         }
+//     }
+//     return CR_PASSWORD_WRONG;
+// }
+// 
+// void SevenZCrackerCPU::sharedDataInit() {
+//     createCRC32Table();
+// 
+// }
+// 

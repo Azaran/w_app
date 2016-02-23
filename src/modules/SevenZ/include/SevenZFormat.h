@@ -29,6 +29,12 @@
 #include <cassert>
 #include <bitset>
 
+#define READ 0
+#define SKIP 1
+/**
+ * For more information read 7zFormat.txt in 7-zip package
+ */
+
 /**
  * Type of file encryption
  */
@@ -63,26 +69,23 @@ struct SevenZStartHdr{
     uint64_t NxtHdrSize;
 };
 
+struct SevenZPackInfoHdr{
+    uint64_t packPos;
+    uint64_t numPackStreams;
+    uint64_t *packSize;
+    uint32_t *CRC;
+};
 struct SevenZInitData{
     SevenZInitData();
-    SevenZInitData(const SevenZInitData &orig);
     SevenZEncType type;
-    uint32_t crc32;
-    uint32_t dataLen;
-    uint32_t uncompressedSize;
+    SevenZCoder *coders;
+    SevenZFolder *folders;
+    SevenZPackInfoHdr *packInfo;
+    uint32_t *CRC;
+    uint64_t numFolders;
+    uint64_t numCoders;
+
     uint16_t keyLength;
-    uint16_t compression;
-    uint16_t encSize;
-    uint16_t erdSize;
-    uint16_t ivSize;
-    uint8_t *encData;
-    uint8_t *erdData;
-    uint8_t *ivData;
-    uint8_t saltLen;
-    uint8_t salt[16];
-    uint8_t verifier[2];
-    uint8_t authCode[10];
-    uint8_t streamBuffer[12];
 };
 
 /**
@@ -105,22 +108,57 @@ protected:
      * @return 
      */
     SevenZInitData readOneFile(std::ifstream *stream);
+    /**
+     * Reads signature of 7z file and Start header structure from the file stream
+     * @param stream
+     * @return 
+     */
     SevenZStartHdr readStartHdr(std::ifstream *stream);
+    /**
+     * Reads Folder structure (0x0B) from the file stream
+     * @param stream
+     * @return 
+     */
     SevenZFolder readFolder(std::ifstream *stream);
+    /**
+     * Converts number from 7z proprietary encoding to standard UINT64
+     * @param stream
+     * @return 
+     */
     uint64_t SevenZUINT64(std::ifstream *stream);
-    void CRCHdr(std::ifstream *stream, uint64_t numPackStreams);
+    /**
+     * Reads structure of CRC (0x0A) from the file stream
+     * @param stream, numPackStreams
+     * @return 
+     */
+    uint32_t* CRCHdr(std::ifstream *stream, uint64_t numPackStreams, bool skip);
+    /**
+     * Reads PackInfo header structure for the file stream
+     * @param stream, numPackStreams
+     */
     void PackInfoHdr(std::ifstream *stream);
+    /**
+     * Reads Coders header structure for the file stream
+     * @param stream
+     */
     void CodersHdr(std::ifstream *stream);
+    /**
+     * Root function for getting all information from the stream
+     * @param stream
+     */
     void readInitInfo(std::ifstream *stream);
-    void readMainHeader(std::ifstream *stream);
-    void readEncHeader(std::ifstream *stream);
+    /**
+     * Can read Main or Encryption header structure (0x01 | 0x17)
+     * @param stream
+     */
+    void readHeader(std::ifstream *stream);
     /**
      * Removes all files, except the smallest one
      */
     void filterData();
     
 private:
-    std::vector<SevenZInitData> data;
+    SevenZInitData data;
 
 };
 
