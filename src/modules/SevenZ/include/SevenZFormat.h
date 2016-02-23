@@ -29,8 +29,30 @@
 #include <cassert>
 #include <bitset>
 
+
+// HEADERS
+#define END 0x00
+#define HDR 0x01
+#define ARCHPROP 0x02
+#define ADDSTRINFO 0x03
+#define MSTRINFO 0x04
+#define FILESINFO 0x05
+#define PACKINFO 0x06
+#define UNPACKINFO 0x07
+#define SUBSTRINFO 0x08
+#define SIZE 0x09
+#define CRC 0x0A
+#define FOLDER 0x0B
+#define CODERUNPACKSIZE 0x0C 
+#define ENCHDR 0x17 
+
+#define SHL(x) (x = x << 1) // shift left by one bit 
 #define READ 0
 #define SKIP 1
+
+
+using namespace std;
+
 /**
  * For more information read 7zFormat.txt in 7-zip package
  */
@@ -39,7 +61,8 @@
  * Type of file encryption
  */
 enum SevenZEncType{
-    SevenZAES,
+    RawHeader,
+    EncHeader,
     NONE
 };
 
@@ -73,17 +96,14 @@ struct SevenZPackInfoHdr{
     uint64_t packPos;
     uint64_t numPackStreams;
     uint64_t *packSize;
-    uint32_t *CRC;
+    uint32_t *crc;
 };
 struct SevenZInitData{
     SevenZInitData();
     SevenZEncType type;
-    SevenZCoder *coders;
     SevenZFolder *folders;
     SevenZPackInfoHdr *packInfo;
-    uint32_t *CRC;
     uint64_t numFolders;
-    uint64_t numCoders;
 
     uint16_t keyLength;
 };
@@ -153,9 +173,9 @@ protected:
      */
     void readHeader(std::ifstream *stream);
     /**
-     * Removes all files, except the smallest one
+     * Print SevenZ encryption information obtained from the file
      */
-    void filterData();
+    void printInfo();
     
 private:
     SevenZInitData data;
