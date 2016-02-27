@@ -36,6 +36,7 @@ enum ZIPEncType{
     WZAES,	// WinZIP AES
     SAES,	// AES from APPNOTE.TXT
     TDES,
+    CDENC,	// Central Directory is encrypted
     NONE
 };
 
