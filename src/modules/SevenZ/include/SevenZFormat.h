@@ -25,6 +25,8 @@
 #define	SevenZFORMAT_H
 
 #include "FileFormat.h"
+#include "7zTypes.h"
+#include "LzmaDec.h"
 #include <vector>
 #include <cassert>
 #include <bitset>
@@ -46,6 +48,10 @@
 #define CODERUNPACKSIZE 0x0C 
 #define ENCHDR 0x17 
 
+// CODERS ID
+#define LZMACDR 0x030101
+#define AESCDR 0x06f10701
+// OTHERS
 #define SHL(x) (x = x << 1) // shift left by one bit 
 #define READ 0
 #define SKIP 1
@@ -67,9 +73,9 @@ enum SevenZEncType{
 };
 
 struct SevenZCoder{
+    uint8_t *coderID;
     uint8_t flags;
     uint8_t coderIDSize;
-    uint8_t *coderID;
     uint64_t numInStreams;
     uint64_t numOutStreams;
     uint64_t propertySize;
@@ -98,6 +104,7 @@ struct SevenZPackInfoHdr{
     uint64_t *packSize;
     uint32_t *crc;
 };
+
 struct SevenZInitData{
     SevenZInitData();
     SevenZEncType type;
@@ -176,6 +183,10 @@ protected:
      * Print SevenZ encryption information obtained from the file
      */
     void printInfo();
+    /**
+     * LZMA decompression of data
+     */
+    void decompress(ifstream *istream, uint64_t numCoders, SevenZPackInfoHdr *pack, SevenZCoder *coder, std::vector<uint8_t>& buf);
     
 private:
     SevenZInitData data;

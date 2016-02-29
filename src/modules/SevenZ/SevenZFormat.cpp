@@ -58,14 +58,11 @@ uint64_t SevenZFormat::SevenZUINT64(ifstream *stream){
     uint8_t firstByte;
     
     stream->read(reinterpret_cast<char*>(&firstByte), 1);
-//    cout << "firstByte: " << bitset<8>(firstByte) << endl;
     while (firstByte & 0x80){
 	SHL(firstByte);
 	bytes++;
     }
 
-//    cout << "bytes: " << bytes << endl;
-//    cout << "firstByte: " << bitset<8>(firstByte) << endl;
     uint8_t num[bytes];
     num[bytes - 1] = firstByte >> (bytes - 1);    // MSB
     if (bytes > 1)
@@ -92,15 +89,15 @@ SevenZStartHdr SevenZFormat::readStartHdr(ifstream *stream){
 SevenZFolder SevenZFormat::readFolder(ifstream *stream){
     SevenZFolder folder;
     folder.numCoders = SevenZUINT64(stream);
-//  cout << "numCoders: " << folder.numCoders << endl;
     folder.coder = new SevenZCoder[folder.numCoders];
     for (uint8_t i = 0; i < folder.numCoders; i++){
 	SevenZCoder *coder = &(folder.coder[i]); 
 	stream->read(reinterpret_cast<char*>(&coder->flags), 1);
 	coder->coderIDSize = (coder->flags & 0x0f);
-//	cout << "codec->coderIDSize: " << coder->coderIDSize << endl;
 	coder->coderID = new uint8_t[coder->coderIDSize];
-	stream->read(reinterpret_cast<char*>(&coder->coderID), coder->coderIDSize);
+	stream->read(reinterpret_cast<char*>(coder->coderID), coder->coderIDSize);
+	for (int j = 0; j < coder->coderIDSize; j++)
+	    cout << "    " << bitset<8>(coder->coderID[j]) << endl;
 	// most important and common IDs:
 	// 03 01 01 - 7z LZMA
 	// 06 f1 07 01 - 7zAES (AES-256 + SHA-256)
@@ -108,13 +105,9 @@ SevenZFolder SevenZFormat::readFolder(ifstream *stream){
 	if (coder->flags & 0x10){
 	    coder->numInStreams = SevenZUINT64(stream);
 	    folder.numInStreamsTotal += coder->numInStreams;
-//	    cout << "numInStreams: " << coder->numInStreams << endl;
-//	    cout << "numInStreamsTotal: " << folder.numInStreamsTotal << endl;
 
 	    coder->numOutStreams = SevenZUINT64(stream);
 	    folder.numOutStreamsTotal += coder->numOutStreams;
-//	    cout << "numOutStreams: " << coder->numOutStreams << endl;
-//	    cout << "numOutStreamsTotal: " << folder.numOutStreamsTotal << endl;
 	}else {
 	    // TODO: check this in the 7z sources
 	    folder.numInStreamsTotal++;
@@ -122,23 +115,16 @@ SevenZFolder SevenZFormat::readFolder(ifstream *stream){
 	}
 	if (coder->flags & 0x20){
 	    coder->propertySize = SevenZUINT64(stream);
-//	    cout << "propertySize: " << coder->propertySize << endl;
 	    coder->property = new uint8_t[coder->propertySize];
 	    stream->read(reinterpret_cast<char*>(&coder->property), coder->propertySize);
 	}
-//	cout << "coder->flags: " << bitset<8>(coder->flags) << endl;
-//    cout << "numInStreamsTotal: " << folder.numOutStreamsTotal << endl;
-//    cout << "numOutStreamsTotal: " << folder.numOutStreamsTotal << endl;
     }
-
-
     for (uint64_t i = 0; i < (folder.numOutStreamsTotal - 1); i++){
 	folder.inIndex = SevenZUINT64(stream);
 	folder.outIndex = SevenZUINT64(stream);
     }
 
     uint64_t numPackStreams = folder.numInStreamsTotal - (folder.numOutStreamsTotal - 1);
-//    cout << "numPackStreams: " << numPackStreams << endl;
     if (numPackStreams > 1){
 	numPackStreams--;
 	folder.index = new uint64_t[numPackStreams];
@@ -176,7 +162,6 @@ void SevenZFormat::PackInfoHdr(ifstream *stream){
     uint8_t subsubHdrID = 1; // we just have to get into the cycle
     while (subsubHdrID != 0){   
 	stream->read(reinterpret_cast<char*>(&subsubHdrID), 1);
-//	cout << "subsubHdrID: " << bitset<8>(subsubHdrID) << endl;
 	if (subsubHdrID == SIZE){   
 	    packInfo->packSize = new uint64_t[packInfo->numPackStreams];
 	    for (uint64_t i = 0; i < packInfo->numPackStreams; i++)
@@ -193,10 +178,8 @@ void SevenZFormat::PackInfoHdr(ifstream *stream){
 void SevenZFormat::CodersHdr(ifstream *stream){	
     uint8_t subsubHdrID;
     stream->read(reinterpret_cast<char*>(&subsubHdrID), 1);	// (FOLDER)
-//    cout << "subsubHdrID: " << bitset<8>(subsubHdrID) << endl;
 
     data.numFolders = SevenZUINT64(stream);
-//    cout << "data.numFolders: " << data.numFolders << endl;
     data.folders = new SevenZFolder[data.numFolders];
     uint8_t ext;
     stream->read(reinterpret_cast<char*>(&ext), 1);
@@ -209,20 +192,15 @@ void SevenZFormat::CodersHdr(ifstream *stream){
     }
 
     stream->read(reinterpret_cast<char*>(&subsubHdrID), 1);	//(CODERUNPACKSIZE)
-//    cout << "subsubHdrID2: " << bitset<8>(subsubHdrID) << endl;
     if (subsubHdrID == CODERUNPACKSIZE){
 	for (uint64_t i = 0; i < data.numFolders; i++){
 	    data.folders[i].unPackSize = new uint64_t[data.folders[i].numOutStreamsTotal];
-//	    cout << "data.numFolders: " << bitset<8>(data.numFolders) << endl;
-//	    cout << "numOutStreamsTotal: " << bitset<8>(data.folders[i].numOutStreamsTotal) << endl;
 	    for (uint64_t j = 0; j < data.folders[i].numOutStreamsTotal; j++)
 	    {
 		data.folders[i].unPackSize[j] = SevenZUINT64(stream);
-//		cout << "unPackSize: " << bitset<24>(data.folders[i].unPackSize[j]) << endl;
 	    }
 	}
 	stream->read(reinterpret_cast<char*>(&subsubHdrID), 1);	// (CRC)
-//	cout << "subsubHdrID3: " << bitset<8>(subsubHdrID) << endl;
     }
 
     if (subsubHdrID == CRC)	    
@@ -236,13 +214,23 @@ void SevenZFormat::readHeader(ifstream *stream){
     uint8_t subHdrID = 1;   // we just wanna get into the cycle
     while (subHdrID != 0){   // End 
 	stream->read(reinterpret_cast<char*>(&subHdrID), 1);
-//	cout << "subHdrID: " << bitset<8>(subHdrID) << endl;
 	if (subHdrID == PACKINFO)
 	    PackInfoHdr(stream);
 	else if (subHdrID == UNPACKINFO){ 
 	    CodersHdr(stream);
 	    subHdrID = 0;	// fixed end we have all info we need
-//	    stream->read(reinterpret_cast<char*>(&subHdrID), 1);	// END {fileend}
+	}
+    }
+}
+
+void SevenZFormat::decompress(ifstream *istream, uint64_t numCoders, SevenZPackInfoHdr *pack, SevenZCoder *coder, std::vector<uint8_t>& buf){
+    cout << "numCoders: " << numCoders << endl; 
+    for (int i = 0; i < numCoders; i++){
+	cout << "i: " << i << " coderID: " << endl;
+	for (int j = 0; j < (coder[i]).coderIDSize; j++)
+	    cout << "    " << bitset<8>((coder[i]).coderID[j]) << endl;
+	if (*(coder[i].coderID) == LZMACDR){
+	    cout << "LZMA found" << endl;
 	}
     }
 }
@@ -253,7 +241,6 @@ void SevenZFormat::readInitInfo(ifstream *stream){
     SevenZStartHdr sighdr = readStartHdr(stream);
     stream->seekg(sighdr.NxtHdrOffset,stream->cur); // move to Main Header
     stream->read(reinterpret_cast<char*>(&hdrID), 1);
-//  cout << "hdrID: " << bitset<8>(hdrID) << endl;
     if (hdrID == HDR){
 	// raw Main Header 
 	// only when only one file is compress and Header is not encrypted
@@ -263,10 +250,12 @@ void SevenZFormat::readInitInfo(ifstream *stream){
 	data.type = EncHeader;
 	readHeader(stream); 
 	// TODO: Decompress and decrypt Main header 
+	vector<uint8_t> buf;
+
+	decompress(stream, data.folders[0].numCoders, data.packInfo, data.folders[0].coder, buf);
     }
-
-
 }
+
 void SevenZFormat::init(string& filename){
     ifstream stream;
     stream.open(filename,ios_base::binary);
