@@ -35,6 +35,12 @@
 
 //typedef CrackerFactoryTemplate<SevenZCrackerGPU,vector<SevenZInitData>*, true> SevenZCrackerGPUFactory;
 
+void *SzAlloc(void *p, size_t size) { p = p; return malloc(size); }
+
+void SzFree(void *p, void *address) { p = p; free(address); }
+
+ISzAlloc alloc = { SzAlloc, SzFree };
+
 SevenZFormat::SevenZFormat(){
     signature = "7z\xBC\xAF\x27\x1C";
     ext = "7z";
@@ -96,8 +102,6 @@ SevenZFolder SevenZFormat::readFolder(ifstream *stream){
 	coder->coderIDSize = (coder->flags & 0x0f);
 	coder->coderID = new uint8_t[coder->coderIDSize];
 	stream->read(reinterpret_cast<char*>(coder->coderID), coder->coderIDSize);
-	for (int j = 0; j < coder->coderIDSize; j++)
-	    cout << "    " << bitset<8>(coder->coderID[j]) << endl;
 	// most important and common IDs:
 	// 03 01 01 - 7z LZMA
 	// 06 f1 07 01 - 7zAES (AES-256 + SHA-256)
@@ -116,7 +120,9 @@ SevenZFolder SevenZFormat::readFolder(ifstream *stream){
 	if (coder->flags & 0x20){
 	    coder->propertySize = SevenZUINT64(stream);
 	    coder->property = new uint8_t[coder->propertySize];
-	    stream->read(reinterpret_cast<char*>(&coder->property), coder->propertySize);
+//	    stream->read(reinterpret_cast<char*>(coder->property), coder->propertySize);
+	    for (int x = coder->propertySize; x > 0; x--)
+		stream->read(reinterpret_cast<char*>(&(coder->property[x-1])),1);
 	}
     }
     for (uint64_t i = 0; i < (folder.numOutStreamsTotal - 1); i++){
@@ -223,16 +229,65 @@ void SevenZFormat::readHeader(ifstream *stream){
     }
 }
 
-void SevenZFormat::decompress(ifstream *istream, uint64_t numCoders, SevenZPackInfoHdr *pack, SevenZCoder *coder, std::vector<uint8_t>& buf){
+void SevenZFormat::copyStreamToBuffer(ifstream *stream, uint64_t pos, uint64_t size, uint8_t **buffer){
+
+    // save state of stream
+    streampos save_pos = stream->tellg();
+
+
+    stream->seekg(pos, stream->beg);
+    *buffer = new uint8_t[size];
+    stream->read(reinterpret_cast<char*>(*buffer), size);
+
+    // restore the state of stream
+    stream->seekg(save_pos);
+}
+
+void SevenZFormat::decompress(ifstream *istream, uint64_t numCoders){
     cout << "numCoders: " << numCoders << endl; 
+    int lzma = 0;
+    uint8_t *compbuf, *rawbuf;
+    SRes decode;
+    ELzmaStatus status;
+    SizeT destlen = data.folders[0].unPackSize[0];
+    SizeT srclen = data.packInfo->packSize[0];
+
     for (int i = 0; i < numCoders; i++){
-	cout << "i: " << i << " coderID: " << endl;
-	for (int j = 0; j < (coder[i]).coderIDSize; j++)
-	    cout << "    " << bitset<8>((coder[i]).coderID[j]) << endl;
-	if (*(coder[i].coderID) == LZMACDR){
+
+	if (data.folders[0].coder[i].coderID[0] == 0x03)
+	    if (data.folders[0].coder[i].coderID[1] == 0x01)
+		lzma = 1;
+	if (lzma){
 	    cout << "LZMA found" << endl;
+	// TODO: Decompress
+	    copyStreamToBuffer(istream, data.packInfo->packPos, data.packInfo->packSize[0], &compbuf);
+
+	    cout << "propertySize: " << data.folders[0].coder[0].propertySize << endl;
+	    cout << "comp data size:  " << srclen << endl;
+	    cout << "decomp data size:" << destlen << endl;
+	    ofstream myfile;
+	    myfile.open ("example.bin", ios::out | ios::trunc | ios::binary);
+	    for (int i = 0; i < srclen; i++)
+		myfile << compbuf[i];
+	    myfile.close();
+	    decode = LzmaDecode(rawbuf, &destlen, compbuf, &srclen, data.folders[0].coder[0].property, \
+		    data.folders[0].coder[0].propertySize, LZMA_FINISH_ANY, &status, &alloc); 
+    
+	    cout << "comp data size:  " << srclen << endl;
+	    cout << "LZMA status: " << status << endl;
+	    cout << "LZMA result: " << decode << endl;
+	    cout << "decomp data size:" << destlen << endl;
+
+	    myfile.open ("example2.bin", ios::out | ios::trunc | ios::binary);
+	    for (int i = 0; i < destlen; i++){
+		myfile << rawbuf[i];
+		cout << rawbuf[i]; 
+	    }
+	    cout << endl;
+	    myfile.close();
 	}
     }
+
 }
 
 void SevenZFormat::readInitInfo(ifstream *stream){
@@ -252,7 +307,7 @@ void SevenZFormat::readInitInfo(ifstream *stream){
 	// TODO: Decompress and decrypt Main header 
 	vector<uint8_t> buf;
 
-	decompress(stream, data.folders[0].numCoders, data.packInfo, data.folders[0].coder, buf);
+	decompress(stream, data.folders[0].numCoders);
     }
 }
 

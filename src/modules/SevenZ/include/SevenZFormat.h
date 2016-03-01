@@ -186,7 +186,9 @@ protected:
     /**
      * LZMA decompression of data
      */
-    void decompress(ifstream *istream, uint64_t numCoders, SevenZPackInfoHdr *pack, SevenZCoder *coder, std::vector<uint8_t>& buf);
+    void decompress(ifstream *istream, uint64_t numCoders);
+
+    void copyStreamToBuffer(ifstream *stream, uint64_t pos, uint64_t size, uint8_t **buffer);
     
 private:
     SevenZInitData data;
