@@ -224,7 +224,6 @@ static int MY_FAST_CALL LzmaDec_DecodeReal(CLzmaDec *p, SizeT limit, const Byte 
         }
         #endif
       }
-
       dic[dicPos++] = (Byte)symbol;
       continue;
     }
@@ -793,9 +792,9 @@ static void LzmaDec_InitStateReal(CLzmaDec *p)
 {
   SizeT numProbs = LzmaProps_GetNumProbs(&p->prop);
   SizeT i;
-//  CLzmaProb *probs = p->probs;
+  CLzmaProb *probs = p->probs;
   for (i = 0; i < numProbs; i++)
-    p->probs[i] = (kBitModelTotal >> 1);
+    probs[i] = kBitModelTotal >> 1;
   p->reps[0] = p->reps[1] = p->reps[2] = p->reps[3] = 1;
   p->state = 0;
   p->needInitState = 0;

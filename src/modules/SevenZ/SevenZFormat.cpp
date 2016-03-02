@@ -120,9 +120,9 @@ SevenZFolder SevenZFormat::readFolder(ifstream *stream){
 	if (coder->flags & 0x20){
 	    coder->propertySize = SevenZUINT64(stream);
 	    coder->property = new uint8_t[coder->propertySize];
-//	    stream->read(reinterpret_cast<char*>(coder->property), coder->propertySize);
-	    for (int x = coder->propertySize; x > 0; x--)
-		stream->read(reinterpret_cast<char*>(&(coder->property[x-1])),1);
+	    stream->read(reinterpret_cast<char*>(coder->property), coder->propertySize);
+	//    for (int x = coder->propertySize; x > 0; x--)
+	//	stream->read(reinterpret_cast<char*>(&(coder->property[x-1])),1);
 	}
     }
     for (uint64_t i = 0; i < (folder.numOutStreamsTotal - 1); i++){
@@ -246,11 +246,12 @@ void SevenZFormat::copyStreamToBuffer(ifstream *stream, uint64_t pos, uint64_t s
 void SevenZFormat::decompress(ifstream *istream, uint64_t numCoders){
     cout << "numCoders: " << numCoders << endl; 
     int lzma = 0;
-    uint8_t *compbuf, *rawbuf;
-    SRes decode;
-    ELzmaStatus status;
     SizeT destlen = data.folders[0].unPackSize[0];
     SizeT srclen = data.packInfo->packSize[0];
+    uint8_t *compbuf;
+    uint8_t rawbuf[destlen];
+    SRes decode;
+    ELzmaStatus status;
 
     for (int i = 0; i < numCoders; i++){
 
@@ -270,9 +271,14 @@ void SevenZFormat::decompress(ifstream *istream, uint64_t numCoders){
 	    for (int i = 0; i < srclen; i++)
 		myfile << compbuf[i];
 	    myfile.close();
-	    decode = LzmaDecode(rawbuf, &destlen, compbuf, &srclen, data.folders[0].coder[0].property, \
+
+
+
+	    decode = LzmaDecode((uint8_t *)&rawbuf, &destlen, compbuf, &srclen, data.folders[0].coder[0].property, \
 		    data.folders[0].coder[0].propertySize, LZMA_FINISH_ANY, &status, &alloc); 
     
+	    
+	    
 	    cout << "comp data size:  " << srclen << endl;
 	    cout << "LZMA status: " << status << endl;
 	    cout << "LZMA result: " << decode << endl;
