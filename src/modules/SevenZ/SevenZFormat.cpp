@@ -25,9 +25,6 @@
 //#include "SevenZCrackerCPU.h"
 //#include "SevenZCrackerGPU.h"
 #include "CrackerFactoryTemplate.tcc"
-#include <fstream>
-#include <cstring>
-#include <iostream>
 
 
 
@@ -243,8 +240,7 @@ void SevenZFormat::copyStreamToBuffer(ifstream *stream, uint64_t pos, uint64_t s
     stream->seekg(save_pos);
 }
 
-void SevenZFormat::decompress(ifstream *istream, uint64_t numCoders){
-    cout << "numCoders: " << numCoders << endl; 
+int SevenZFormat::decompress(ifstream *istream, uint64_t numCoders){
     int lzma = 0;
     SizeT destlen = data.folders[0].unPackSize[0];
     SizeT srclen = data.packInfo->packSize[0];
@@ -254,46 +250,27 @@ void SevenZFormat::decompress(ifstream *istream, uint64_t numCoders){
     ELzmaStatus status;
 
     for (int i = 0; i < numCoders; i++){
-
 	if (data.folders[0].coder[i].coderID[0] == 0x03)
 	    if (data.folders[0].coder[i].coderID[1] == 0x01)
 		lzma = 1;
 	if (lzma){
-	    cout << "LZMA found" << endl;
-	// TODO: Decompress
-	    copyStreamToBuffer(istream, data.packInfo->packPos, data.packInfo->packSize[0], &compbuf);
-
-	    cout << "propertySize: " << data.folders[0].coder[0].propertySize << endl;
-	    cout << "comp data size:  " << srclen << endl;
-	    cout << "decomp data size:" << destlen << endl;
-	    ofstream myfile;
-	    myfile.open ("example.bin", ios::out | ios::trunc | ios::binary);
-	    for (int i = 0; i < srclen; i++)
-		myfile << compbuf[i];
-	    myfile.close();
-
-
-
-	    decode = LzmaDecode((uint8_t *)&rawbuf, &destlen, compbuf, &srclen, data.folders[0].coder[0].property, \
-		    data.folders[0].coder[0].propertySize, LZMA_FINISH_ANY, &status, &alloc); 
-    
-	    
-	    
-	    cout << "comp data size:  " << srclen << endl;
-	    cout << "LZMA status: " << status << endl;
-	    cout << "LZMA result: " << decode << endl;
-	    cout << "decomp data size:" << destlen << endl;
-
-	    myfile.open ("example2.bin", ios::out | ios::trunc | ios::binary);
-	    for (int i = 0; i < destlen; i++){
-		myfile << rawbuf[i];
-		cout << rawbuf[i]; 
-	    }
-	    cout << endl;
-	    myfile.close();
+	    copyStreamToBuffer(istream, data.packInfo->packPos,\
+		    data.packInfo->packSize[0], &compbuf);
+	    decode = LzmaDecode((uint8_t*)rawbuf, &destlen,\
+		    compbuf, &srclen,\
+		    data.folders[0].coder[0].property,\
+		    data.folders[0].coder[0].propertySize,\
+		    LZMA_FINISH_ANY, &status, &alloc);
+	   
+	   // Might need some optimalization
+	   ofstream rawhdr;
+	   rawhdr.open ("raw.hdr", ios::out | ios::trunc | ios::binary);
+	   for (uint64_t i = 1; i < destlen; i++)
+	       rawhdr << rawbuf[i];
+	   rawhdr.close(); 
 	}
     }
-
+    return destlen;
 }
 
 void SevenZFormat::readInitInfo(ifstream *stream){
@@ -309,15 +286,22 @@ void SevenZFormat::readInitInfo(ifstream *stream){
 	readHeader(stream); 
     }else if (hdrID == ENCHDR){
 	data.type = EncHeader;
-	readHeader(stream); 
-	// TODO: Decompress and decrypt Main header 
-	vector<uint8_t> buf;
+	readHeader(stream);
+	codersInEncHdr = data.numFolders;
+	if (data.numFolders == 1 && data.folders[0].numCoders == 1){
+	    int fsize = decompress(stream, data.folders[0].numCoders); 
 
-	decompress(stream, data.folders[0].numCoders);
+	    ifstream rawhdr; 
+	    rawhdr.open("raw.hdr", ios_base::binary);
+	    readHeader(&rawhdr);
+	    rawhdr.close();
+	    remove("raw.hdr");	    // clear the file
+	} 
+	    // else : go cracking
     }
-}
+} 
 
-void SevenZFormat::init(string& filename){
+void SevenZFormat::init(string& filename){ 
     ifstream stream;
     stream.open(filename,ios_base::binary);
     char buffer[6];
@@ -338,7 +322,7 @@ void SevenZFormat::printInfo(){
 	if (data.type == RawHeader)
 	    cout << "Header is not encrypted nor compressed" << endl;
 	else if (data.type == EncHeader){
-	    if (data.folders[0].numCoders == 1)
+	    if (codersInEncHdr == 1)
 		cout << "Header is either compressed or encrypted" << endl;
 	    else 
 		cout << "Header is compressed and encrypted" << endl;

@@ -30,6 +30,8 @@
 #include <vector>
 #include <cassert>
 #include <bitset>
+#include <iostream>
+#include <string>
 
 
 // HEADERS
@@ -111,7 +113,6 @@ struct SevenZInitData{
     SevenZFolder *folders;
     SevenZPackInfoHdr *packInfo;
     uint64_t numFolders;
-
     uint16_t keyLength;
 };
 
@@ -186,12 +187,13 @@ protected:
     /**
      * LZMA decompression of data
      */
-    void decompress(ifstream *istream, uint64_t numCoders);
+    int decompress(ifstream *istream, uint64_t numCoders);
 
     void copyStreamToBuffer(ifstream *stream, uint64_t pos, uint64_t size, uint8_t **buffer);
     
 private:
     SevenZInitData data;
+    uint64_t codersInEncHdr;
 
 };
 
