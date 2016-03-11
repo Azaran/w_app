@@ -25,15 +25,13 @@
 #define	SevenZCRACKER_H
 
 #include "SevenZFormat.h"
-#include <zlib.h>
 
 /**
  * Base class for Cracking SevenZ Stream Cipher
  */
 class SevenZCracker {
 public:
-    SevenZCracker(std::vector<SevenZInitData> *data);
-    SevenZCracker(const SevenZCracker& orig);
+    SevenZCracker(SevenZInitData *data);
     virtual ~SevenZCracker();
     /**
      * SevenZ Stream Cipher keys
@@ -95,10 +93,6 @@ protected:
      * Buffer for decrypted data
      */
     uint8_t *decryptBuffer;
-    /**
-     * Struct for ZLIB
-     */
-    z_stream zlibStrm;
     
     /**
      * CRC32 table

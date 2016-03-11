@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2014 Jan Schmied
+ * Copyright (C) 2016 Vojtech Vecera
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy 
  * of this software and associated documentation files (the "Software"), to deal 
@@ -20,25 +20,13 @@
  * SOFTWARE.
  * 
  */
-// 
+ 
 // #include "SevenZCracker.h"
-// #include <cstring>
 // 
-// SevenZCracker::SevenZCracker(std::vector<SevenZInitData> *data):data(data) {
-//     /* allocate inflate state */
-//     zlibStrm.zalloc = Z_NULL;
-//     zlibStrm.zfree = Z_NULL;
-//     zlibStrm.opaque = Z_NULL;
-//     zlibStrm.avail_in = 0;
-//     zlibStrm.next_in = Z_NULL;
-//     inflateInit2(&zlibStrm, -MAX_WBITS);
-// }
-// 
-// SevenZCracker::SevenZCracker(const SevenZCracker& orig) {
+// SevenZCracker::SevenZCracker(SevenZInitData *data) {
 // }
 // 
 // SevenZCracker::~SevenZCracker() {
-//     inflateEnd(&zlibStrm);
 // }
 // 
 // void SevenZCracker::updateKeys(SevenZKeys* keys, uint8_t c){
@@ -85,7 +73,7 @@
 //     int remain;
 //     int ret;
 //     do{
-//         remain = data->dataLen-chunk_no*CHUNK;
+//         //remain = data->dataLen-chunk_no*CHUNK;
 //         int toDecompress = 0;
 //         if(remain > CHUNK){
 //             ::memcpy(compressed,data->encData+chunk_no*CHUNK,CHUNK);

@@ -26,6 +26,7 @@
 #include "ZIPAESCrackerGPU.h"
 #include "ZIPPKCrackerCPU.h"
 #include "ZIPPKCrackerGPU.h"
+#include "ZIPStAESCrackerCPU.h"
 #include "CrackerFactoryTemplate.tcc"
 #include <fstream>
 #include <cstring>
@@ -33,6 +34,7 @@
 
 typedef CrackerFactoryTemplate<ZIPAESCrackerCPU,std::vector<ZIPInitData>*> ZIPAESCrackerCPUFactory;
 typedef CrackerFactoryTemplate<ZIPPKCrackerCPU,std::vector<ZIPInitData>*> ZIPPKCrackerCPUFactory;
+typedef CrackerFactoryTemplate<ZIPStAESCrackerCPU,std::vector<ZIPInitData>*> ZIPStAESCrackerCPUFactory;
 
 typedef CrackerFactoryTemplate<ZIPPKCrackerGPU,std::vector<ZIPInitData>*, true> ZIPPKCrackerGPUFactory;
 typedef CrackerFactoryTemplate<ZIPAESCrackerGPU,std::vector<ZIPInitData>*, true> ZIPAESCrackerGPUFactory;
@@ -77,7 +79,8 @@ ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream){
 	if (flags & 0x2000){
 	    data.type = CDENC;
 	    // TODO: FIND the decryption record
-	    //		Might need rework of whole file
+	    //		Might require rework of whole file 
+	    //		    BETTER SKIP IT FOR NOW
 	}else {
 	    if (!(flags & 0x40)){	// check strong encryption flag not set
 		if(data.compression == 99){ // WinZIP AES
@@ -266,7 +269,7 @@ CrackerFactory* ZIPFormat::getCPUCracker(){
                 return new ZIPPKCrackerCPUFactory(&data);
             }else
                 return NULL;
-        case SAES: return NULL; // new ZIPStAESCrackerCPUFactory(&data);
+        case SAES: return new ZIPStAESCrackerCPUFactory(&data);
         case TDES: return NULL; // new ZIPTDESCrackerCPUFactory(&data);
 	case CDENC: return NULL;
         default: return NULL;
