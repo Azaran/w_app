@@ -50,62 +50,23 @@ protected:
      */
     void sha1(const uint8_t* msg,unsigned int len,uint8_t* output);
     /**
-     * Calculate SHA1 hash of message up to two blocks (119 bytes)
-     * @param msg input to hash
-     * @param len input legth
-     * @param output result hash
-     */
-    void sha1_fast(const uint8_t* msg,unsigned int len,uint8_t* output);
-    /**
-     * Calculate HMAC-SHA1 of message
      * @param msg input to HMAC
      * @param msgLen input length
      * @param key key to auth
      * @param keyLen key length
      * @param output result HMAC
      */
-    void hmac_sha1(const uint8_t* msg,unsigned int msgLen, const uint8_t* key,unsigned int keyLen,uint8_t* output);
+    void derive_key(const uint8_t* hash, uint8_t key, uint8_t* output);
     /**
-     * Calculate HMAC-SHA1 of message up to 1 block (55 bytes)
-     * @param msg input to HMAC
-     * @param msgLen input length
-     * @param key key to auth
-     * @param keyLen key length
-     * @param output result HMAC
-     */
-    void hmac_sha1_fast(const uint8_t* msg,unsigned int msgLen, const uint8_t* key,unsigned int keyLen,uint8_t* output);
-    /**
-     * Create key using PBKDF2 method
      * @param pass password
      * @param passLen passwoed length
      * @param output result key
      */
-    void pbkdf2_sha1(const uint8_t* pass, unsigned int passLen, uint8_t* output);
+    void derive(const uint8_t* pass, unsigned int passLen, uint8_t* output);
 
     
-    void pbkdf2_sha1_zip_aes256(const uint8_t* pass, unsigned int passLen, uint8_t* output);
     
     void decAES256(uint16_t dsize, uint8_t* data, uint8_t psize, uint8_t* pass, uint16_t ivsize, uint8_t* ivdata, uint8_t* rawdata);
-    /**
-     * Create two verification bytes from PBKDF2 for 192bit keys
-     * @param pass password
-     * @param passLen password length
-     * @param in_salt salt
-     * @param output two verification bytes
-     * @see pbkdf2_sha1_zip_aes256
-     * @see pbkdf2_sha1_zip_aes128
-     */
-    void pbkdf2_sha1_zip_aes192(const uint8_t* pass, unsigned int passLen, const uint8_t* in_salt,uint8_t* output);
-    /**
-     * Create two verification bytes from PBKDF2 for 128bit keys
-     * @param pass password
-     * @param passLen password length
-     * @param in_salt salt
-     * @param output two verification bytes
-     * @see pbkdf2_sha1_zip_aes256
-     * @see pbkdf2_sha1_zip_aes192
-     */
-    void pbkdf2_sha1_zip_aes128(const uint8_t* pass, unsigned int passLen, const uint8_t* in_salt,uint8_t* output);
     
     std::vector<ZIPInitData> *data;
     ZIPInitData check_data;

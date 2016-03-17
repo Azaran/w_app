@@ -22,6 +22,8 @@
  */
 
 #include "ZIPStAESCrackerCPU.h"
+#include "rijndael.h"
+#include "crc.h"
 #include <deque>
 #include <string.h>
 #include <iostream>
@@ -36,28 +38,32 @@ ZIPStAESCrackerCPU::ZIPStAESCrackerCPU(std::vector<ZIPInitData> *data):data(data
     }
 }
 
-ZIPStAESCrackerCPU::ZIPStAESCrackerCPU(const ZIPStAESCrackerCPU& orig) {
-}
+ZIPStAESCrackerCPU::ZIPStAESCrackerCPU(const ZIPStAESCrackerCPU &orig){}
 
 ZIPStAESCrackerCPU::~ZIPStAESCrackerCPU() {
 }
 
 CheckResult ZIPStAESCrackerCPU::checkPassword(const std::string* pass) {
-    uint8_t derpass[16];
-    pbkdf2_sha1_zip_aes256(reinterpret_cast<const uint8_t*>(pass->c_str()), pass->length(), check_data.ivSize, check_data.ivData, derpass);
-/*
-    if(::memcmp(&check_data.verifier,verifier,2) == 0){
-        uint8_t keyData[128],authCode[20];
-        uint8_t *key;
-        pbkdf2_sha1(reinterpret_cast<const uint8_t*>(pass->c_str()),pass->length(),check_data.salt,check_data.saltLen,1000,check_data.keyLength/4,keyData);
-        key = keyData+(check_data.keyLength/8);
-        hmac_sha1(check_data.encData,check_data.dataLen,key,check_data.keyLength/8,authCode);
-        if(::memcmp(authCode,check_data.authCode,10) == 0){
-            return CR_PASSWORD_MATCH;
-        }
-        return CR_PASSWORD_WRONG;
-    }
-    */
+        
+    uint8_t *masterKey;
+    uint8_t *rdData;
+    masterKey = new uint8_t[32];
+    derive(reinterpret_cast<const uint8_t*>(pass->c_str()), pass->length(), (uint8_t*)masterKey);
+    Rijndael aes;
+    aes.Init(false, masterKey, check_data.keyLength, check_data.ivData);
+    aes.blockDecrypt(check_data.erdData, check_data.erdSize, rdData);
+    
+    uint8_t *tempKey;
+    memcpy(tempKey, check_data.ivData, check_data.ivSize);
+    memcpy(tempKey+check_data.ivSize, rdData, sizeof(*rdData));
+
+    uint8_t *FileSessionKey;
+    
+
+
+
+
+    exit(3);
     return CR_PASSWORD_WRONG;
 }
 
@@ -279,213 +285,40 @@ void ZIPStAESCrackerCPU::sha1(const uint8_t* msg,unsigned int len,uint8_t* outpu
     
 }
 
-void ZIPStAESCrackerCPU::sha1_fast(const uint8_t* msg,unsigned int len,uint8_t* output){
-    uint32_t h0 = 0x67452301;
-    uint32_t h1 = 0xEFCDAB89;
-    uint32_t h2 = 0x98BADCFE;
-    uint32_t h3 = 0x10325476;
-    uint32_t h4 = 0xC3D2E1F0;
+void ZIPStAESCrackerCPU::derive_key(const uint8_t* hash, uint8_t key, uint8_t* output){
+   
     
-    uint32_t chunks = ((len+9)/64)+1;
-    
-    uint8_t msg_pad_space[2*64] = {0};
-    uint8_t *msg_pad = msg_pad_space;
-    uint32_t w[80] = {0};
-    
-    uint8_t pos = 62;
-    
-    if(len > 2*64-9){
-        return;
-    }
-    memcpy(msg_pad,msg,len*sizeof(char));
-    msg_pad[len] = 0x80;
-    if(len > 56)
-        pos = 126;
-    
-    unsigned long long int bit_len = len*8;
-    msg_pad[pos++] = (bit_len >> 8) & 0xFF;
-    msg_pad[pos] = bit_len & 0xFF;
-    
-    for(uint32_t chunk = 0;chunk<chunks;chunk++){
-        unsigned int register a = h0;
-        unsigned int register b = h1;
-        unsigned int register c = h2;
-        unsigned int register d = h3;
-        unsigned int register e = h4;
+    uint8_t *key_pad = new uint8_t[64];
+    memset(key_pad,key,64);
 
-    ROUND0s(a, b, c, d, e,  0, w, msg_pad)
-	ROUND0s(e, a, b, c, d,  1, w, msg_pad)
-	ROUND0s(d, e, a, b, c,  2, w, msg_pad)
-	ROUND0s(c, d, e, a, b,  3, w, msg_pad)
-	ROUND0s(b, c, d, e, a,  4, w, msg_pad)
-	ROUND0s(a, b, c, d, e,  5, w, msg_pad)
-	ROUND0s(e, a, b, c, d,  6, w, msg_pad)
-	ROUND0s(d, e, a, b, c,  7, w, msg_pad)
-	ROUND0s(c, d, e, a, b,  8, w, msg_pad)
-	ROUND0s(b, c, d, e, a,  9, w, msg_pad)
-	ROUND0s(a, b, c, d, e, 10, w, msg_pad)
-	ROUND0s(e, a, b, c, d, 11, w, msg_pad)
-	ROUND0s(d, e, a, b, c, 12, w, msg_pad)
-	ROUND0s(c, d, e, a, b, 13, w, msg_pad)
-	ROUND0s(b, c, d, e, a, 14, w, msg_pad)
-	ROUND0s(a, b, c, d, e, 15, w, msg_pad)
-	ROUND0(e, a, b, c, d, 16, w)
-	ROUND0(d, e, a, b, c, 17, w)
-	ROUND0(c, d, e, a, b, 18, w)
-	ROUND0(b, c, d, e, a, 19, w)
-	ROUND1(a, b, c, d, e, 20, w)
-	ROUND1(e, a, b, c, d, 21, w)
-	ROUND1(d, e, a, b, c, 22, w)
-	ROUND1(c, d, e, a, b, 23, w)
-	ROUND1(b, c, d, e, a, 24, w)
-	ROUND1(a, b, c, d, e, 25, w)
-	ROUND1(e, a, b, c, d, 26, w)
-	ROUND1(d, e, a, b, c, 27, w)
-	ROUND1(c, d, e, a, b, 28, w)
-	ROUND1(b, c, d, e, a, 29, w)
-	ROUND1(a, b, c, d, e, 30, w)
-	ROUND1(e, a, b, c, d, 31, w)
-	ROUND1(d, e, a, b, c, 32, w)
-	ROUND1(c, d, e, a, b, 33, w)
-	ROUND1(b, c, d, e, a, 34, w)
-	ROUND1(a, b, c, d, e, 35, w)
-	ROUND1(e, a, b, c, d, 36, w)
-	ROUND1(d, e, a, b, c, 37, w)
-	ROUND1(c, d, e, a, b, 38, w)
-	ROUND1(b, c, d, e, a, 39, w)
-	ROUND2(a, b, c, d, e, 40, w)
-	ROUND2(e, a, b, c, d, 41, w)
-	ROUND2(d, e, a, b, c, 42, w)
-	ROUND2(c, d, e, a, b, 43, w)
-	ROUND2(b, c, d, e, a, 44, w)
-	ROUND2(a, b, c, d, e, 45, w)
-	ROUND2(e, a, b, c, d, 46, w)
-	ROUND2(d, e, a, b, c, 47, w)
-	ROUND2(c, d, e, a, b, 48, w)
-	ROUND2(b, c, d, e, a, 49, w)
-	ROUND2(a, b, c, d, e, 50, w)
-	ROUND2(e, a, b, c, d, 51, w)
-	ROUND2(d, e, a, b, c, 52, w)
-	ROUND2(c, d, e, a, b, 53, w)
-	ROUND2(b, c, d, e, a, 54, w)
-	ROUND2(a, b, c, d, e, 55, w)
-	ROUND2(e, a, b, c, d, 56, w)
-	ROUND2(d, e, a, b, c, 57, w)
-	ROUND2(c, d, e, a, b, 58, w)
-	ROUND2(b, c, d, e, a, 59, w)
-	ROUND3(a, b, c, d, e, 60, w)
-	ROUND3(e, a, b, c, d, 61, w)
-	ROUND3(d, e, a, b, c, 62, w)
-	ROUND3(c, d, e, a, b, 63, w)
-	ROUND3(b, c, d, e, a, 64, w)
-	ROUND3(a, b, c, d, e, 65, w)
-	ROUND3(e, a, b, c, d, 66, w)
-	ROUND3(d, e, a, b, c, 67, w)
-	ROUND3(c, d, e, a, b, 68, w)
-	ROUND3(b, c, d, e, a, 69, w)
-	ROUND3(a, b, c, d, e, 70, w)
-	ROUND3(e, a, b, c, d, 71, w)
-	ROUND3(d, e, a, b, c, 72, w)
-	ROUND3(c, d, e, a, b, 73, w)
-	ROUND3(b, c, d, e, a, 74, w)
-	ROUND3(a, b, c, d, e, 75, w)
-	ROUND3(e, a, b, c, d, 76, w)
-	ROUND3(d, e, a, b, c, 77, w)
-	ROUND3(c, d, e, a, b, 78, w)
-	ROUND3(b, c, d, e, a, 79, w)
-        
-        h0 += a;
-        h1 += b;
-        h2 += c;
-        h3 += d;
-        h4 += e;
-        msg_pad += 64;
-    }
-    
-    output[0] = h0 >> 24;
-    output[1] = (h0 >> 16) & 0xFF;
-    output[2] = (h0 >> 8) & 0xFF;
-    output[3] = h0 & 0xFF;
-    
-    output[4] = h1 >> 24;
-    output[5] = (h1 >> 16) & 0xFF;
-    output[6] = (h1 >> 8) & 0xFF;
-    output[7] = h1 & 0xFF;
-    
-    output[8] = h2 >> 24;
-    output[9] = (h2 >> 16) & 0xFF;
-    output[10] = (h2 >> 8) & 0xFF;
-    output[11] = h2 & 0xFF;
-    
-    output[12] = h3 >> 24;
-    output[13] = (h3 >> 16) & 0xFF;
-    output[14] = (h3 >> 8) & 0xFF;
-    output[15] = h3 & 0xFF;
-    
-    output[16] = h4 >> 24;
-    output[17] = (h4 >> 16) & 0xFF;
-    output[18] = (h4 >> 8) & 0xFF;
-    output[19] = h4 & 0xFF;
-    
-}
+    for(uint8_t i = 0;i<20; i++)
+        key_pad[i] ^= hash[i];
 
-void ZIPStAESCrackerCPU::hmac_sha1(const uint8_t* msg,unsigned int msgLen, const uint8_t* key,unsigned int keyLen, uint8_t* output){
-    uint8_t *key_pad = new unsigned char[64+msgLen];
-    ::memset(key_pad,0x36,64*sizeof(char));
-    for(uint8_t i = 0;i<keyLen; i++){
-        key_pad[i] ^= key[i];
-    }
-    
-    memcpy(key_pad+64,msg,msgLen*sizeof(char));
-    sha1(key_pad,64+msgLen,output);
-    memset(key_pad,0x5C,64*sizeof(char));
-    for(uint8_t i = 0;i<keyLen; i++){
-        key_pad[i] ^= key[i];
-    }
-    
-    memcpy(key_pad+64,output,20*sizeof(char));
-    sha1_fast(key_pad,84,output);
+    sha1(key_pad,64,output);
     delete[] key_pad;
-}
-
-void ZIPStAESCrackerCPU::hmac_sha1_fast(const uint8_t* msg,unsigned int msgLen, const uint8_t* key,unsigned int keyLen,uint8_t* output){
-    unsigned char key_pad[256];
-    memset(key_pad,0x36,64*sizeof(char));
-    for(uint8_t i = 0;i<keyLen; i++){
-        key_pad[i] ^= key[i];
-    }
-    memcpy(key_pad+64,msg,msgLen*sizeof(char));
-    sha1_fast(key_pad,64+msgLen,output);
-
-    memset(key_pad,0x5C,64*sizeof(char));
-    for(uint8_t i = 0;i<keyLen; i++){
-        key_pad[i] ^= key[i];
-    }
-    memcpy(key_pad+64,output,20*sizeof(char));
-    sha1_fast(key_pad,84,output);
 }
 
 #define ADD_XOR(res, in) \
         for (int i = 0;i<20;i++) \
              res[i] ^= in[i];
         
+       
+
+void ZIPStAESCrackerCPU::derive(const uint8_t* pass, unsigned int passLen, uint8_t* output){
+
+    uint8_t *prevU = new uint8_t[20];
+    uint8_t *temp = new uint8_t[40];
+   
+    ::memset(prevU,0x00,20);
+    sha1(pass,20,prevU);
+    derive_key((uint8_t*)prevU, 0x36 , (uint8_t*)temp);
+    derive_key((uint8_t*)prevU, 0x5c, (uint8_t*)(temp+20));
+    memcpy(output, temp, 32); 
+    
+}
+
 void decAES256(uint16_t dsize, uint8_t* data, uint8_t psize, uint8_t* pass, uint16_t ivsize, uint8_t* ivdata, uint8_t* rawdata){
 
 
 }
 
-void ZIPStAESCrackerCPU::pbkdf2_sha1(const uint8_t* pass, unsigned int passLen, uint8_t* output){
-	uint8_t passbuf[16];
-	uint8_t *RD;
-	sha1_fast(pass, passLen, passbuf);
-	decAEA256(check_data.erdSize, check_data.erdData, 16, passbuf, check_data.ivSize, check_data.ivData, RD);
-	
-	cout << "sha1 pass: " << output << endl;
-}
-
-
-void ZIPStAESCrackerCPU::pbkdf2_sha1_zip_aes256(const uint8_t* pass, unsigned int passLen, uint8_t* output){
-    
-    pbkdf2_sha1(pass, passLen, ivSize, ivData, output);
-    
-}
