@@ -47,12 +47,12 @@ ZIPStAESCrackerCPU::~ZIPStAESCrackerCPU() {
 CheckResult ZIPStAESCrackerCPU::checkPassword(const std::string* pass) {
     
     int keyLen = 32;
-    uint8_t *masterKey = new uint8_t[keyLen];
-    uint8_t *rdData= new uint8_t[check_data.erdSize];
-    derive(reinterpret_cast<const uint8_t*>(pass->c_str()), pass->length(), (uint8_t*)masterKey);
+    uint8_t *key = new uint8_t[keyLen];
+    derive(reinterpret_cast<const uint8_t*>(pass->c_str()), pass->length(), (uint8_t*)key);
     
+    uint8_t *rdData= new uint8_t[check_data.erdSize];
     Rijndael aes;
-    aes.Init(false, masterKey, check_data.keyLength, check_data.ivData);
+    aes.Init(false, key, check_data.keyLength, check_data.ivData);
     aes.blockDecrypt(check_data.erdData, check_data.erdSize, rdData);
     
     uint32_t size = check_data.ivSize + check_data.erdSize;
@@ -61,11 +61,12 @@ CheckResult ZIPStAESCrackerCPU::checkPassword(const std::string* pass) {
     memcpy(tempKey, check_data.ivData, check_data.ivSize);
     memcpy(tempKey+check_data.ivSize, rdData, check_data.erdSize-16);
     
-    uint8_t *FileSessionKey = new uint8_t[keyLen];
-    uint8_t *vData = new uint8_t[check_data.encSize];
-    derive(tempKey, size-16, FileSessionKey);   
+    delete[] tempKey; 
 
-    aes.Init(false, FileSessionKey, check_data.keyLength, check_data.ivData);
+    uint8_t *vData = new uint8_t[check_data.encSize];
+    derive(tempKey, size-16, key);   
+
+    aes.Init(false, key, check_data.keyLength, check_data.ivData);
     aes.blockDecrypt(check_data.encData, check_data.encSize, vData);
 
     uint32_t crc = 0;
@@ -75,11 +76,13 @@ CheckResult ZIPStAESCrackerCPU::checkPassword(const std::string* pass) {
     crc = crc << 8 ^ vData[check_data.encSize-4];
 
     if (crc == crc32(0, vData, check_data.encSize-4)){
+	delete[] key;
         delete[] rdData;
         delete[] vData;
 
         return CR_PASSWORD_MATCH;
     }
+    delete[] key;
     delete[] rdData;
     delete[] vData;
     
@@ -314,14 +317,9 @@ void ZIPStAESCrackerCPU::derive_key(const uint8_t* hash, uint8_t key, uint8_t* o
         key_pad[i] ^= hash[i];
 
     sha1(key_pad,64,output);
+
     delete[] key_pad;
 }
-
-#define ADD_XOR(res, in) \
-        for (int i = 0;i<20;i++) \
-             res[i] ^= in[i];
-        
-       
 
 void ZIPStAESCrackerCPU::derive(const uint8_t* pass, unsigned int passLen, uint8_t* output){
 
@@ -334,5 +332,7 @@ void ZIPStAESCrackerCPU::derive(const uint8_t* pass, unsigned int passLen, uint8
     derive_key((uint8_t*)passHash, 0x5c, (uint8_t*)(temp+20));
     
     memcpy(output, temp, 32); 
-    
+
+    delete[] passHash;
+    delete[] temp;
 }

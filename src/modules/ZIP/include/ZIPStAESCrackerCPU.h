@@ -50,17 +50,17 @@ protected:
      */
     void sha1(const uint8_t* msg,unsigned int len,uint8_t* output);
     /**
-     * @param msg input to HMAC
+     * Similar to Microsoft CryptoDeriveKey()
+     * @param msg input to SHA1
      * @param msgLen input length
-     * @param key key to auth
-     * @param keyLen key length
-     * @param output result HMAC
+     * @param output result SHA1 hash
      */
     void derive_key(const uint8_t* hash, uint8_t key, uint8_t* output);
     /**
+     * Similar to Microsoft CryptoDeriveKey()
      * @param pass password
      * @param passLen passwoed length
-     * @param output result key
+     * @param output result key (hash)
      */
     void derive(const uint8_t* pass, unsigned int passLen, uint8_t* output);
     
