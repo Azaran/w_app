@@ -160,10 +160,10 @@ ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream){
 		}
 
 		stream->read(reinterpret_cast<char*>(&data.encSize),sizeof(uint16_t));
-		data.encSize -= 4;	// minus size of VCRC32
+//		data.encSize -= 4;	// minus size of VCRC32
 		data.encData = new uint8_t[data.encSize];
 		stream->read(reinterpret_cast<char*>(data.encData),data.encSize);
-		stream->read(reinterpret_cast<char*>(&data.crc32),sizeof(uint32_t));
+//		stream->read(reinterpret_cast<char*>(&data.crc32),sizeof(uint32_t));
 		stream->seekg(compressed_size, stream->cur);    // skip file data
 
 		if (flags & 0x8)

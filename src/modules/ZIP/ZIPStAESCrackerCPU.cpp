@@ -23,10 +23,11 @@
 
 #include "ZIPStAESCrackerCPU.h"
 #include "rijndael.h"
-#include "crc.h"
 #include <deque>
 #include <string.h>
 #include <iostream>
+#include <iomanip>
+#include "crc.h"
 using namespace std;
 
 ZIPStAESCrackerCPU::ZIPStAESCrackerCPU(std::vector<ZIPInitData> *data):data(data) {
@@ -44,26 +45,80 @@ ZIPStAESCrackerCPU::~ZIPStAESCrackerCPU() {
 }
 
 CheckResult ZIPStAESCrackerCPU::checkPassword(const std::string* pass) {
-        
-    uint8_t *masterKey;
-    uint8_t *rdData;
-    masterKey = new uint8_t[32];
+    cout << "pass: " << *pass << endl;
+    int keyLen = 32;
+    uint8_t *masterKey = new uint8_t[keyLen];
+    uint8_t *rdData= new uint8_t[check_data.erdSize];
     derive(reinterpret_cast<const uint8_t*>(pass->c_str()), pass->length(), (uint8_t*)masterKey);
+    
+//    uint32_t crc = crc32buf(check_data.ivData, check_data.ivSize);
+//    cout << "masterKey: " << masterKey << endl;
+//    cout << "erdData: " << check_data.erdData << endl;
     Rijndael aes;
     aes.Init(false, masterKey, check_data.keyLength, check_data.ivData);
     aes.blockDecrypt(check_data.erdData, check_data.erdSize, rdData);
-    
+//    cout << "rdData: "<< rdData << endl;
+//    cout << "rdSize: "<< check_data.erdSize << endl;
+//    cout << "ivData: "<< check_data.ivData << endl;
+//    cout << "jsem tu taky" << endl;
+    uint32_t size = check_data.ivSize + check_data.erdSize;
     uint8_t *tempKey;
+
     memcpy(tempKey, check_data.ivData, check_data.ivSize);
-    memcpy(tempKey+check_data.ivSize, rdData, sizeof(*rdData));
-
-    uint8_t *FileSessionKey;
+    memcpy(tempKey+check_data.ivSize, rdData, check_data.erdSize-16);
     
+//    cout << "encData: " << check_data.encData << endl;
+//    cout << "encSize: " << check_data.encSize << endl;
+    
+    //cout << "size: " << rdSize << endl;
+    uint8_t *FileSessionKey = new uint8_t[keyLen];
+    uint8_t *vData = new uint8_t[check_data.encSize];
+    derive(tempKey, size-16, FileSessionKey);   
 
+    cout << "FileSessionKey: " << hex;
+    for (int i = 0; i < 32; i++) 
+	cout << (int)FileSessionKey[i] << " ";
+    cout << endl; 
 
+    aes.Init(false, FileSessionKey, check_data.keyLength, check_data.ivData);
+    aes.blockDecrypt(check_data.encData, check_data.encSize, vData);
 
+    cout << "ivData: " << hex;
+    for (int i = 0; i < check_data.ivSize; i++) 
+	cout << (int)check_data.ivData[i] << " ";
+    cout << endl; 
+    
+    cout << "encData( " << check_data.encSize << "): " << hex;
+    for (int i = 0; i < check_data.encSize; i++){ 
+	if (i % 16 == 0)
+	    cout << endl;
+	cout << (int)check_data.encData[i] << " ";
+    }
+    cout << endl; 
 
-    exit(3);
+    cout << "vData( " << check_data.encSize << "): " << hex;
+    
+    for (int i = 0; i < check_data.encSize; i++){ 
+	if (i % 16 == 0)
+	    cout << endl;
+	cout << (int)vData[i] << " ";
+    }
+    cout << endl; 
+
+    uint8_t *crc = (&vData[check_data.encSize-4]);
+    cout << "crc32: " << hex << (int)crc[0] << (int)crc[1] << (int)crc[2] << (int)crc[3] << endl;
+    cout << "comp : " << crc32(0, vData, check_data.encSize-4) << endl;
+/*
+    if (*crc == crc32(0, vData, check_data.encSize-4)){
+        delete[] rdData;
+        delete[] vData;
+
+        return CR_PASSWORD_MATCH;
+    }
+  */
+    delete[] rdData;
+    delete[] vData;
+    exit(0);
     return CR_PASSWORD_WRONG;
 }
 
@@ -134,7 +189,7 @@ void ZIPStAESCrackerCPU::sha1(const uint8_t* msg,unsigned int len,uint8_t* outpu
             ::memcpy(msg_pad,msg+chunk*64,64);
         }else if(chunk == padInChunk){
             uint32_t padStart = len%64;
-            ::memcpy(msg_pad,msg+chunk*64,padStart);
+            memcpy(msg_pad,msg+chunk*64,padStart);
             msg_pad[padStart] = 0x80;
             if(longPad){
                 // pad in last two chunks

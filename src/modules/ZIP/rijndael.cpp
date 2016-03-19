@@ -7,6 +7,7 @@
  ***************************************************************************/
 #include "rijndael.h"
 #include <cstring>
+#include <iostream>
 
 static uint8_t S[256],S5[256],rcon[30];
 static uint8_t T1[256][4],T2[256][4],T3[256][4],T4[256][4];
@@ -60,8 +61,7 @@ inline void Copy128(uint8_t *dest,const uint8_t *src)
 
 Rijndael::Rijndael()
 {
-  if (S[0]==0)
-    GenerateTables();
+  GenerateTables();
   CBCMode = true; // Always true for RAR.
 }
 
@@ -86,7 +86,7 @@ void Rijndael::Init(bool Encrypt,const uint8_t *key,unsigned int keyLen,const ui
   }
 
   uint8_t keyMatrix[_MAX_KEY_COLUMNS][4];
-
+  memset(m_expandedKey, 0, 15*4*4);
   for(unsigned int i = 0; i < uKeyLenInuint8_ts; i++)
     keyMatrix[i >> 2][i & 3] = key[i]; 
 
