@@ -63,10 +63,6 @@ protected:
      * @param output result key
      */
     void derive(const uint8_t* pass, unsigned int passLen, uint8_t* output);
-
-    
-    
-    void decAES256(uint16_t dsize, uint8_t* data, uint8_t psize, uint8_t* pass, uint16_t ivsize, uint8_t* ivdata, uint8_t* rawdata);
     
     std::vector<ZIPInitData> *data;
     ZIPInitData check_data;
