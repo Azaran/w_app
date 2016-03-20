@@ -26,7 +26,6 @@
 #include <deque>
 #include <string.h>
 #include <iostream>
-#include <iomanip>
 #include "crc.h"
 using namespace std;
 
@@ -37,6 +36,10 @@ ZIPStAESCrackerCPU::ZIPStAESCrackerCPU(std::vector<ZIPInitData> *data):data(data
             break;
         }
     }
+    rdData = new uint8_t [check_data.erdSize];
+    tempKey = new uint8_t [check_data.ivSize + check_data.erdSize];
+    vData = new uint8_t [check_data.encSize];
+	
 }
 
 ZIPStAESCrackerCPU::ZIPStAESCrackerCPU(const ZIPStAESCrackerCPU &orig){}
@@ -46,45 +49,30 @@ ZIPStAESCrackerCPU::~ZIPStAESCrackerCPU() {
 
 CheckResult ZIPStAESCrackerCPU::checkPassword(const std::string* pass) {
     
-    int keyLen = 32;
-    uint8_t *key = new uint8_t[keyLen];
+    uint32_t crc = 0;
+
     derive(reinterpret_cast<const uint8_t*>(pass->c_str()), pass->length(), (uint8_t*)key);
     
-    uint8_t *rdData= new uint8_t[check_data.erdSize];
     Rijndael aes;
     aes.Init(false, key, check_data.keyLength, check_data.ivData);
     aes.blockDecrypt(check_data.erdData, check_data.erdSize, rdData);
-    
-    uint32_t size = check_data.ivSize + check_data.erdSize;
-    uint8_t *tempKey = new uint8_t [size];
 
     memcpy(tempKey, check_data.ivData, check_data.ivSize);
     memcpy(tempKey+check_data.ivSize, rdData, check_data.erdSize-16);
-    
-    delete[] tempKey; 
 
-    uint8_t *vData = new uint8_t[check_data.encSize];
-    derive(tempKey, size-16, key);   
+    derive(tempKey, check_data.ivSize+check_data.erdSize-16, key);   
 
     aes.Init(false, key, check_data.keyLength, check_data.ivData);
     aes.blockDecrypt(check_data.encData, check_data.encSize, vData);
 
-    uint32_t crc = 0;
     crc = crc ^ vData[check_data.encSize-1];
     crc = crc << 8 ^ vData[check_data.encSize-2];
     crc = crc << 8 ^ vData[check_data.encSize-3];
     crc = crc << 8 ^ vData[check_data.encSize-4];
 
     if (crc == crc32(0, vData, check_data.encSize-4)){
-	delete[] key;
-        delete[] rdData;
-        delete[] vData;
-
         return CR_PASSWORD_MATCH;
     }
-    delete[] key;
-    delete[] rdData;
-    delete[] vData;
     
     return CR_PASSWORD_WRONG;
 }
@@ -309,22 +297,19 @@ void ZIPStAESCrackerCPU::sha1(const uint8_t* msg,unsigned int len,uint8_t* outpu
 
 void ZIPStAESCrackerCPU::derive_key(const uint8_t* hash, uint8_t key, uint8_t* output){
    
-    
-    uint8_t *key_pad = new uint8_t[64];
+    uint8_t key_pad[64];
     memset(key_pad,key,64);
 
     for(uint8_t i = 0;i<20; i++)
         key_pad[i] ^= hash[i];
 
     sha1(key_pad,64,output);
-
-    delete[] key_pad;
 }
 
 void ZIPStAESCrackerCPU::derive(const uint8_t* pass, unsigned int passLen, uint8_t* output){
 
-    uint8_t *passHash = new uint8_t[20];
-    uint8_t *temp = new uint8_t[40];
+    uint8_t passHash[20];
+    uint8_t temp[40];
    
     ::memset(passHash,0x00,20);
     sha1(pass,passLen,passHash);
@@ -333,6 +318,4 @@ void ZIPStAESCrackerCPU::derive(const uint8_t* pass, unsigned int passLen, uint8
     
     memcpy(output, temp, 32); 
 
-    delete[] passHash;
-    delete[] temp;
 }

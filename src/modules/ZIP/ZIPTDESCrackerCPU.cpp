@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2014 Jan Schmied
+ * Copyright (C) 2016 Vojtech Vecera
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy 
  * of this software and associated documentation files (the "Software"), to deal 
@@ -25,40 +25,96 @@
 #include <deque>
 #include <string.h>
 #include <iostream>
+#include "crc.h"
+#include <openssl/des.h>
+using namespace std;
 
 ZIPTDESCrackerCPU::ZIPTDESCrackerCPU(std::vector<ZIPInitData> *data):data(data) {
-    for(int i = 0;i<this->data->size();i++){
+    for(int i = 0; i < this->data->size(); i++){
         if((*this->data)[i].dataLen > 0){
             check_data = (*(this->data))[i];
             break;
         }
     }
+    rdData = new uint8_t [check_data.erdSize];
+    tempKey = new uint8_t [check_data.ivSize + check_data.erdSize];
+    vData = new uint8_t [check_data.encSize];
+	
 }
 
-ZIPTDESCrackerCPU::ZIPTDESCrackerCPU(const ZIPTDESCrackerCPU& orig) {
-}
+ZIPTDESCrackerCPU::ZIPTDESCrackerCPU(const ZIPTDESCrackerCPU &orig){}
 
 ZIPTDESCrackerCPU::~ZIPTDESCrackerCPU() {
 }
 
 CheckResult ZIPTDESCrackerCPU::checkPassword(const std::string* pass) {
-    uint8_t verifier[2];
-    switch(check_data.keyLength){
-        case 256: pbkdf2_sha1_zip_aes256(reinterpret_cast<const uint8_t*>(pass->c_str()),pass->length(),check_data.salt,verifier);break;
-        case 128: pbkdf2_sha1_zip_aes128(reinterpret_cast<const uint8_t*>(pass->c_str()),pass->length(),check_data.salt,verifier);break;
-        case 192: pbkdf2_sha1_zip_aes192(reinterpret_cast<const uint8_t*>(pass->c_str()),pass->length(),check_data.salt,verifier);break;
+    
+    uint32_t crc = 0;
+
+    derive(reinterpret_cast<const uint8_t*>(pass->c_str()), pass->length(), (uint8_t*)key);
+    tdesDecrypt(key, check_data.erdData, check_data.erdSize, rdData); 
+    
+    cout << "ivData: " << endl;
+    for (int i=0; i < 8; i++){
+        cout << hex << setw(2) << setfill('0') << (int)check_data.ivData[i] << " ";
     }
-    if(::memcmp(&check_data.verifier,verifier,2) == 0){
-        uint8_t keyData[128],authCode[20];
-        uint8_t *key;
-        pbkdf2_sha1(reinterpret_cast<const uint8_t*>(pass->c_str()),pass->length(),check_data.salt,check_data.saltLen,1000,check_data.keyLength/4,keyData);
-        key = keyData+(check_data.keyLength/8);
-        hmac_sha1(check_data.encData,check_data.dataLen,key,check_data.keyLength/8,authCode);
-        if(::memcmp(authCode,check_data.authCode,10) == 0){
-            return CR_PASSWORD_MATCH;
-        }
-        return CR_PASSWORD_WRONG;
+    cout << endl;
+    
+    cout << "key1: " << endl;
+    for (int i=0; i < 21; i++){
+        cout << hex << setw(2) << setfill('0') << (int)key[i] << " ";
     }
+    cout << endl;
+    cout << "erdData: " << endl;
+    for (int i=0; i < check_data.erdSize; i++){
+        cout << hex << setw(2) << setfill('0') << (int)check_data.erdData[i] << " ";
+    }
+    cout << endl;
+    
+    tdesDecrypt(key, check_data.encData, check_data.encSize, vData);
+    
+    cout << "vData: " << endl;
+    for (int i=0; i < check_data.erdSize; i++){
+        cout << hex << setw(2) << setfill('0') << (int)rdData[i] << " ";
+    }
+    cout << endl;
+    memcpy(tempKey, check_data.ivData, check_data.ivSize);
+    memcpy(tempKey+check_data.ivSize, rdData, check_data.erdSize-16);
+
+    derive(tempKey, check_data.ivSize+check_data.erdSize-16, key);   
+
+    cout << "key: " << endl;
+    for (int i=0; i < 21; i++){
+        cout << hex << setw(2) << setfill('0') << (int)key[i] << " ";
+    }
+    cout << endl;
+    
+    cout << "encData: " << endl;
+    for (int i=0; i < check_data.encSize; i++){
+        cout << hex << setw(2) << setfill('0') << (int)check_data.encData[i] << " ";
+    }
+    cout << endl;
+    
+    tdesDecrypt(key, check_data.encData, check_data.encSize, vData);
+    
+    cout << "vData: " << endl;
+    for (int i=0; i < check_data.encSize; i++){
+        cout << hex << setw(2) << setfill('0') << (int)vData[i] << " ";
+    }
+    cout << endl;
+
+    crc = crc ^ vData[check_data.encSize-1];
+    crc = crc << 8 ^ vData[check_data.encSize-2];
+    crc = crc << 8 ^ vData[check_data.encSize-3];
+    crc = crc << 8 ^ vData[check_data.encSize-4];
+    
+    cout << "crc: " << crc << endl;
+    cout << "crc: " << crc32(0, vData, check_data.encSize-4) << endl;
+    exit(0);
+    if (crc == crc32(0, vData, check_data.encSize-4)){
+        return CR_PASSWORD_MATCH;
+    }
+    
     return CR_PASSWORD_WRONG;
 }
 
@@ -129,7 +185,7 @@ void ZIPTDESCrackerCPU::sha1(const uint8_t* msg,unsigned int len,uint8_t* output
             ::memcpy(msg_pad,msg+chunk*64,64);
         }else if(chunk == padInChunk){
             uint32_t padStart = len%64;
-            ::memcpy(msg_pad,msg+chunk*64,padStart);
+            memcpy(msg_pad,msg+chunk*64,padStart);
             msg_pad[padStart] = 0x80;
             if(longPad){
                 // pad in last two chunks
@@ -280,285 +336,104 @@ void ZIPTDESCrackerCPU::sha1(const uint8_t* msg,unsigned int len,uint8_t* output
     
 }
 
-void ZIPTDESCrackerCPU::sha1_fast(const uint8_t* msg,unsigned int len,uint8_t* output){
-    uint32_t h0 = 0x67452301;
-    uint32_t h1 = 0xEFCDAB89;
-    uint32_t h2 = 0x98BADCFE;
-    uint32_t h3 = 0x10325476;
-    uint32_t h4 = 0xC3D2E1F0;
-    
-    uint32_t chunks = ((len+9)/64)+1;
-    
-    uint8_t msg_pad_space[2*64] = {0};
-    uint8_t *msg_pad = msg_pad_space;
-    uint32_t w[80] = {0};
-    
-    uint8_t pos = 62;
-    
-    if(len > 2*64-9){
-        return;
-    }
-    memcpy(msg_pad,msg,len*sizeof(char));
-    msg_pad[len] = 0x80;
-    if(len > 56)
-        pos = 126;
-    
-    unsigned long long int bit_len = len*8;
-    msg_pad[pos++] = (bit_len >> 8) & 0xFF;
-    msg_pad[pos] = bit_len & 0xFF;
-    
-    for(uint32_t chunk = 0;chunk<chunks;chunk++){
-        unsigned int register a = h0;
-        unsigned int register b = h1;
-        unsigned int register c = h2;
-        unsigned int register d = h3;
-        unsigned int register e = h4;
+void ZIPTDESCrackerCPU::derive_key(const uint8_t* hash, uint8_t key, uint8_t* output){
+   
+    uint8_t key_pad[64];
+    memset(key_pad,key,64);
 
-        
-    ROUND0s(a, b, c, d, e,  0, w, msg_pad)
-	ROUND0s(e, a, b, c, d,  1, w, msg_pad)
-	ROUND0s(d, e, a, b, c,  2, w, msg_pad)
-	ROUND0s(c, d, e, a, b,  3, w, msg_pad)
-	ROUND0s(b, c, d, e, a,  4, w, msg_pad)
-	ROUND0s(a, b, c, d, e,  5, w, msg_pad)
-	ROUND0s(e, a, b, c, d,  6, w, msg_pad)
-	ROUND0s(d, e, a, b, c,  7, w, msg_pad)
-	ROUND0s(c, d, e, a, b,  8, w, msg_pad)
-	ROUND0s(b, c, d, e, a,  9, w, msg_pad)
-	ROUND0s(a, b, c, d, e, 10, w, msg_pad)
-	ROUND0s(e, a, b, c, d, 11, w, msg_pad)
-	ROUND0s(d, e, a, b, c, 12, w, msg_pad)
-	ROUND0s(c, d, e, a, b, 13, w, msg_pad)
-	ROUND0s(b, c, d, e, a, 14, w, msg_pad)
-	ROUND0s(a, b, c, d, e, 15, w, msg_pad)
-	ROUND0(e, a, b, c, d, 16, w)
-	ROUND0(d, e, a, b, c, 17, w)
-	ROUND0(c, d, e, a, b, 18, w)
-	ROUND0(b, c, d, e, a, 19, w)
-	ROUND1(a, b, c, d, e, 20, w)
-	ROUND1(e, a, b, c, d, 21, w)
-	ROUND1(d, e, a, b, c, 22, w)
-	ROUND1(c, d, e, a, b, 23, w)
-	ROUND1(b, c, d, e, a, 24, w)
-	ROUND1(a, b, c, d, e, 25, w)
-	ROUND1(e, a, b, c, d, 26, w)
-	ROUND1(d, e, a, b, c, 27, w)
-	ROUND1(c, d, e, a, b, 28, w)
-	ROUND1(b, c, d, e, a, 29, w)
-	ROUND1(a, b, c, d, e, 30, w)
-	ROUND1(e, a, b, c, d, 31, w)
-	ROUND1(d, e, a, b, c, 32, w)
-	ROUND1(c, d, e, a, b, 33, w)
-	ROUND1(b, c, d, e, a, 34, w)
-	ROUND1(a, b, c, d, e, 35, w)
-	ROUND1(e, a, b, c, d, 36, w)
-	ROUND1(d, e, a, b, c, 37, w)
-	ROUND1(c, d, e, a, b, 38, w)
-	ROUND1(b, c, d, e, a, 39, w)
-	ROUND2(a, b, c, d, e, 40, w)
-	ROUND2(e, a, b, c, d, 41, w)
-	ROUND2(d, e, a, b, c, 42, w)
-	ROUND2(c, d, e, a, b, 43, w)
-	ROUND2(b, c, d, e, a, 44, w)
-	ROUND2(a, b, c, d, e, 45, w)
-	ROUND2(e, a, b, c, d, 46, w)
-	ROUND2(d, e, a, b, c, 47, w)
-	ROUND2(c, d, e, a, b, 48, w)
-	ROUND2(b, c, d, e, a, 49, w)
-	ROUND2(a, b, c, d, e, 50, w)
-	ROUND2(e, a, b, c, d, 51, w)
-	ROUND2(d, e, a, b, c, 52, w)
-	ROUND2(c, d, e, a, b, 53, w)
-	ROUND2(b, c, d, e, a, 54, w)
-	ROUND2(a, b, c, d, e, 55, w)
-	ROUND2(e, a, b, c, d, 56, w)
-	ROUND2(d, e, a, b, c, 57, w)
-	ROUND2(c, d, e, a, b, 58, w)
-	ROUND2(b, c, d, e, a, 59, w)
-	ROUND3(a, b, c, d, e, 60, w)
-	ROUND3(e, a, b, c, d, 61, w)
-	ROUND3(d, e, a, b, c, 62, w)
-	ROUND3(c, d, e, a, b, 63, w)
-	ROUND3(b, c, d, e, a, 64, w)
-	ROUND3(a, b, c, d, e, 65, w)
-	ROUND3(e, a, b, c, d, 66, w)
-	ROUND3(d, e, a, b, c, 67, w)
-	ROUND3(c, d, e, a, b, 68, w)
-	ROUND3(b, c, d, e, a, 69, w)
-	ROUND3(a, b, c, d, e, 70, w)
-	ROUND3(e, a, b, c, d, 71, w)
-	ROUND3(d, e, a, b, c, 72, w)
-	ROUND3(c, d, e, a, b, 73, w)
-	ROUND3(b, c, d, e, a, 74, w)
-	ROUND3(a, b, c, d, e, 75, w)
-	ROUND3(e, a, b, c, d, 76, w)
-	ROUND3(d, e, a, b, c, 77, w)
-	ROUND3(c, d, e, a, b, 78, w)
-	ROUND3(b, c, d, e, a, 79, w)
-        
-        h0 += a;
-        h1 += b;
-        h2 += c;
-        h3 += d;
-        h4 += e;
-        msg_pad += 64;
-    }
-    
-    output[0] = h0 >> 24;
-    output[1] = (h0 >> 16) & 0xFF;
-    output[2] = (h0 >> 8) & 0xFF;
-    output[3] = h0 & 0xFF;
-    
-    output[4] = h1 >> 24;
-    output[5] = (h1 >> 16) & 0xFF;
-    output[6] = (h1 >> 8) & 0xFF;
-    output[7] = h1 & 0xFF;
-    
-    output[8] = h2 >> 24;
-    output[9] = (h2 >> 16) & 0xFF;
-    output[10] = (h2 >> 8) & 0xFF;
-    output[11] = h2 & 0xFF;
-    
-    output[12] = h3 >> 24;
-    output[13] = (h3 >> 16) & 0xFF;
-    output[14] = (h3 >> 8) & 0xFF;
-    output[15] = h3 & 0xFF;
-    
-    output[16] = h4 >> 24;
-    output[17] = (h4 >> 16) & 0xFF;
-    output[18] = (h4 >> 8) & 0xFF;
-    output[19] = h4 & 0xFF;
-    
+    for(uint8_t i = 0;i<20; i++)
+        key_pad[i] ^= hash[i];
+
+    sha1(key_pad,64,output);
 }
 
-void ZIPTDESCrackerCPU::hmac_sha1(const uint8_t* msg,unsigned int msgLen, const uint8_t* key,unsigned int keyLen,uint8_t* output){
-    uint8_t *key_pad = new unsigned char[64+msgLen];
-    ::memset(key_pad,0x36,64*sizeof(char));
-    for(uint8_t i = 0;i<keyLen; i++){
-        key_pad[i] ^= key[i];
-    }
+void ZIPTDESCrackerCPU::derive(const uint8_t* pass, unsigned int passLen, uint8_t* output){
+
+    uint8_t passHash[20];
+    uint8_t temp[40];
+   
+    ::memset(passHash,0x00,20);
+    sha1(pass,passLen,passHash);
+    derive_key((uint8_t*)passHash, 0x36 , (uint8_t*)temp);
+    derive_key((uint8_t*)passHash, 0x5c, (uint8_t*)(temp+20));
     
-    memcpy(key_pad+64,msg,msgLen*sizeof(char));
-    sha1(key_pad,64+msgLen,output);
-    memset(key_pad,0x5C,64*sizeof(char));
-    for(uint8_t i = 0;i<keyLen; i++){
-        key_pad[i] ^= key[i];
-    }
-    
-    memcpy(key_pad+64,output,20*sizeof(char));
-    sha1_fast(key_pad,84,output);
-    delete[] key_pad;
+   // cout << "key: " << endl;
+   // for (int i=0; i < 32; i++){
+   //     if (i %8 == 0 && i > 0)
+   //         cout << endl;
+   //     uint8_t a = (int)temp[i];
+   //     cout << bitset<8>(a) << " ";
+   // }
+   // cout << endl;
+    memcpy(output, temp, 32); 
 }
 
-void ZIPTDESCrackerCPU::hmac_sha1_fast(const uint8_t* msg,unsigned int msgLen, const uint8_t* key,unsigned int keyLen,uint8_t* output){
-    unsigned char key_pad[256];
-    memset(key_pad,0x36,64*sizeof(char));
-    for(uint8_t i = 0;i<keyLen; i++){
-        key_pad[i] ^= key[i];
-    }
-    memcpy(key_pad+64,msg,msgLen*sizeof(char));
-    sha1_fast(key_pad,64+msgLen,output);
+void ZIPTDESCrackerCPU::prepareKey(uint8_t *key, uint8_t *output){
+    uint8_t mask = 0xfe, cmask=0x0;
+    uint8_t ke2, carry = 0;
+    for (int i = 1; i < 9; i++,(*key++)){
 
-    memset(key_pad,0x5C,64*sizeof(char));
-    for(uint8_t i = 0;i<keyLen; i++){
-        key_pad[i] ^= key[i];
+	ke2 = ((carry << 8-(i-1)) + ((*key) >> i-1)) >> 1 << 1;
+	(*output++) = ke2;
+	
+	cmask = (cmask << 1) + 1;
+	carry = (*key) & cmask;
+	
+//	cout << "p: " << bitset<8>((*key)) << endl;
+//	cout << "m: " << bitset<8>(cmask) << endl;
+//	cout << "c: " << bitset<8>(carry) << endl;
+//	cout << "k: " << bitset<8>(ke2) << endl;
+//	cout << "-------------------" << endl;
     }
-    memcpy(key_pad+64,output,20*sizeof(char));
-    sha1_fast(key_pad,84,output);
 }
 
-#define ADD_XOR(res, in) \
-        for (int i = 0;i<20;i++) \
-             res[i] ^= in[i];
-        
-        
+void ZIPTDESCrackerCPU::tdesDecrypt(uint8_t *key, uint8_t *cipher, uint32_t cipherLen, uint8_t *output){
+   
+    /* Triple DES key for Encryption and Decryption */
+    DES_cblock k1;
+    DES_cblock k2;
+    DES_cblock k3;
+    DES_key_schedule SchKey1,SchKey2,SchKey3;
+  /* 
+    uint8_t buf[8];
+    prepareKey(key, (uint8_t*)buf);
+    memcpy(&k1, &buf, 8);
+    prepareKey(key+7, (uint8_t*)buf);
+    memcpy(&k2, &buf, 8);
+    prepareKey(key+14, (uint8_t*)buf);
+    memcpy(&k3, &buf, 8);
+    /
 
-void ZIPTDESCrackerCPU::pbkdf2_sha1(const uint8_t* pass, unsigned int passLen, const uint8_t* in_salt,unsigned int saltLen, unsigned int iterations, unsigned int dkLen, uint8_t* output){
-    if(saltLen>16)
-        return;
+    cout << "k: ";
+    for (int i=0; i < 8; i++)
+        cout << hex <<setw(2) << setfill('0') <<  (int)k1[i] << " ";
+    for (int i=0; i < 8; i++)
+        cout << hex << setw(2) << setfill('0') << (int)k2[i] << " ";
+    for (int i=0; i < 8; i++)
+        cout << hex << setw(2) << setfill('0') << (int)k3[i] << " ";
+    cout << endl;
 
-    int l = dkLen / 20;
-    int l_rem = dkLen % 20;
-    if (l_rem > 0)
-        l++;
-
+    DES_set_odd_parity(&k1);
+    DES_set_odd_parity(&k2);
+    DES_set_odd_parity(&k3);
+    DES_cblock iv; 
     
-    uint8_t prevU[20];
-    uint8_t Fres[20];
-    uint8_t T[80] = {0};
+    prepareKey(check_data.ivData, (uint8_t*)buf);
+    memcpy(&iv, (uint8_t*) buf, 8);
+    */
+  //  DES_set_odd_parity(&iv);
+    memcpy(&k1, key, 7);
+    memcpy(&k2, key+7, 7);
+    memcpy(&k3, key+14, 7);
+    DES_cblock iv; 
+    memcpy(&iv, check_data.ivData, 8);
+    cout << "IV: ";
+    for (int i=0; i < 8; i++)
+        cout << hex <<setw(2) << setfill('0') <<  (int)iv[i] << " ";
+    cout << endl; 
+    DES_set_key_unchecked(&k1, &SchKey1);
+    DES_set_key_unchecked(&k2, &SchKey2);
+    DES_set_key_unchecked(&k3, &SchKey3);
     
-    
-    for(int i=1;i<=l;i++){
-        memset(Fres,0,20*sizeof(uint8_t));
-        memcpy(prevU,in_salt,saltLen*sizeof(char));
-        *((unsigned int*)(prevU+saltLen)) = __builtin_bswap32(i);
-        hmac_sha1_fast(prevU,saltLen+4,pass,passLen,prevU);
-        ADD_XOR(Fres,prevU);
-        for(uint32_t c=1;c<iterations;c++){
-            hmac_sha1_fast(prevU,20,pass,passLen,prevU);
-            ADD_XOR(Fres,prevU);
-        }
-        memcpy(T+(i-1)*20,Fres,20*sizeof(uint8_t));
-    }
-    memcpy(output,T,dkLen*sizeof(uint8_t));
-    
-    
-}
-
-
-void ZIPTDESCrackerCPU::pbkdf2_sha1_zip_aes256(const uint8_t* pass, unsigned int passLen, const uint8_t* in_salt, uint8_t* output){
-
-    uint8_t prevU[20];
-    uint8_t Fres[20];    
-    
-
-    memset(Fres,0,20*sizeof(uint8_t));
-    memcpy(prevU,in_salt,16*sizeof(char));
-    *((uint32_t*)(prevU+16)) = 0x04000000;
-
-    
-    hmac_sha1_fast(prevU,20,pass,passLen,prevU);
-    
-    ADD_XOR(Fres,prevU);
-    for(int c=1;c<1000;c++){
-        hmac_sha1_fast(prevU,20,pass,passLen,prevU);
-        ADD_XOR(Fres,prevU);
-    }
-    memcpy(output,Fres+4,2*sizeof(uint8_t));  
-}
-
-void ZIPTDESCrackerCPU::pbkdf2_sha1_zip_aes192(const uint8_t* pass, unsigned int passLen, const uint8_t* in_salt, uint8_t* output){
-
-    uint8_t prevU[20];
-    uint8_t Fres[20];    
-    
-
-    memset(Fres,0,20*sizeof(uint8_t));
-    memcpy(prevU,in_salt,12*sizeof(char));
-    *((uint32_t*)(prevU+12)) = 0x03000000;
-    hmac_sha1_fast(prevU,12+4,pass,passLen,prevU);
-    ADD_XOR(Fres,prevU);
-    for(int c=1;c<1000;c++){
-        hmac_sha1_fast(prevU,20,pass,passLen,prevU);
-        ADD_XOR(Fres,prevU);
-    }
-    memcpy(output,Fres+8,2*sizeof(uint8_t)); 
-}
-
-void ZIPTDESCrackerCPU::pbkdf2_sha1_zip_aes128(const uint8_t* pass, unsigned int passLen, const uint8_t* in_salt, uint8_t* output){
-
-    uint8_t prevU[20];
-    uint8_t Fres[20];    
-    
-
-    memset(Fres,0,20*sizeof(uint8_t));
-    memcpy(prevU,in_salt,8*sizeof(char));
-    *((uint32_t*)(prevU+8)) = 0x02000000;
-    hmac_sha1_fast(prevU,8+4,pass,passLen,prevU);
-    ADD_XOR(Fres,prevU);
-    for(int c=1;c<1000;c++){
-        hmac_sha1_fast(prevU,20,pass,passLen,prevU);
-        ADD_XOR(Fres,prevU);
-    }
-    memcpy(output,Fres+12,2*sizeof(uint8_t)); 
+    DES_ede3_cbc_encrypt( cipher, output, cipherLen, &SchKey1, &SchKey2, &SchKey3,&iv,DES_DECRYPT);
 }

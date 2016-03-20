@@ -27,6 +27,8 @@
 #include "ZIPPKCrackerCPU.h"
 #include "ZIPPKCrackerGPU.h"
 #include "ZIPStAESCrackerCPU.h"
+#include "ZIPTDESCrackerCPU.h"
+
 #include "CrackerFactoryTemplate.tcc"
 #include <fstream>
 #include <cstring>
@@ -35,6 +37,7 @@
 typedef CrackerFactoryTemplate<ZIPAESCrackerCPU,std::vector<ZIPInitData>*> ZIPAESCrackerCPUFactory;
 typedef CrackerFactoryTemplate<ZIPPKCrackerCPU,std::vector<ZIPInitData>*> ZIPPKCrackerCPUFactory;
 typedef CrackerFactoryTemplate<ZIPStAESCrackerCPU,std::vector<ZIPInitData>*> ZIPStAESCrackerCPUFactory;
+typedef CrackerFactoryTemplate<ZIPTDESCrackerCPU,std::vector<ZIPInitData>*> ZIPTDESCrackerCPUFactory;
 
 typedef CrackerFactoryTemplate<ZIPPKCrackerGPU,std::vector<ZIPInitData>*, true> ZIPPKCrackerGPUFactory;
 typedef CrackerFactoryTemplate<ZIPAESCrackerGPU,std::vector<ZIPInitData>*, true> ZIPAESCrackerGPUFactory;
@@ -137,7 +140,7 @@ ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream){
 		stream->seekg(ext_fields_len, stream->cur);	    // skip extra fields
 
 		stream->read(reinterpret_cast<char*>(&data.ivSize),sizeof(uint16_t));
-		data.ivData = new uint8_t[data.ivSize];
+		std::cout << data.ivSize << std::endl;
 		stream->read(reinterpret_cast<char*>(data.ivData),data.ivSize);
 
 		stream->seekg(4, stream->cur);  // Size
@@ -270,7 +273,7 @@ CrackerFactory* ZIPFormat::getCPUCracker(){
             }else
                 return NULL;
         case SAES: return new ZIPStAESCrackerCPUFactory(&data);
-        case TDES: return NULL; // new ZIPTDESCrackerCPUFactory(&data);
+        case TDES: return new ZIPTDESCrackerCPUFactory(&data);
 	case CDENC: return NULL;
         default: return NULL;
     }
