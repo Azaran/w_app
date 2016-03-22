@@ -48,6 +48,7 @@
 #define CRC 0x0A
 #define FOLDER 0x0B
 #define CODERUNPACKSIZE 0x0C 
+#define NUMUNPACKSTR 0x0D 
 #define ENCHDR 0x17 
 
 // CODERS ID
@@ -104,7 +105,7 @@ struct SevenZPackInfoHdr{
     uint64_t packPos;
     uint64_t numPackStreams;
     uint64_t *packSize;
-    uint32_t *crc;
+    uint32_t *crc = NULL;
 };
 
 struct SevenZInitData{
@@ -114,6 +115,7 @@ struct SevenZInitData{
     SevenZPackInfoHdr *packInfo;
     uint64_t numFolders;
     uint16_t keyLength;
+    uint8_t *encData;
 };
 
 /**
@@ -159,7 +161,8 @@ protected:
      * @param stream, numPackStreams
      * @return 
      */
-    uint32_t* CRCHdr(std::ifstream *stream, uint64_t numPackStreams, bool skip);
+        uint32_t* CRCHdr(std::ifstream *stream, uint64_t numPackStreams, bool skip);
+
     /**
      * Reads PackInfo header structure for the file stream
      * @param stream, numPackStreams
@@ -185,10 +188,12 @@ protected:
      */
     void printInfo();
     /**
-     * LZMA decompression of data
+     * LZMA decompressHdrion of data
      */
-    int decompress(ifstream *istream, uint64_t numCoders);
+    int decompressHdr(ifstream *istream, uint64_t numCoders);
+    void SubStreamInfoHdr(ifstream *stream);
 
+    void data4Cracking(ifstream *istream);
     void copyStreamToBuffer(ifstream *stream, uint64_t pos, uint64_t size, uint8_t **buffer);
     
 private:
@@ -198,4 +203,11 @@ private:
 };
 
 #endif	/* SevenZFORMAT_H */
+
+#ifndef LZMA_ALLOC_FNC
+#define LZMA_ALLOC_FNC
+void *SzAlloc(void *p, size_t size);
+
+void SzFree(void *p, void *address);
+#endif
 

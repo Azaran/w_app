@@ -22,13 +22,13 @@
  */
 
 #include "SevenZFormat.h"
-//#include "SevenZCrackerCPU.h"
+#include "SevenZCrackerCPU.h"
 //#include "SevenZCrackerGPU.h"
 #include "CrackerFactoryTemplate.tcc"
 
 
 
-//typedef CrackerFactoryTemplate<SevenZCrackerCPU,vector<SevenZInitData>*> SevenZCrackerCPUFactory;
+typedef CrackerFactoryTemplate<SevenZCrackerCPU,SevenZInitData*> SevenZCrackerCPUFactory;
 
 //typedef CrackerFactoryTemplate<SevenZCrackerGPU,vector<SevenZInitData>*, true> SevenZCrackerGPUFactory;
 
@@ -145,7 +145,7 @@ uint32_t* SevenZFormat::CRCHdr(ifstream *stream, uint64_t numPackStreams,bool sk
 	uint8_t aad;
 	stream->read(reinterpret_cast<char*>(&aad), 1);
 	if (aad == 0){
-	    cerr << "File reading error. AllAreDefined == 0." << endl;	// TODO: figure out how AAD works
+	    cerr << "File reading error. AllAreDefined == 0." << endl; // TODO: figure out how AAD works
 	    exit(153);
 	}
 	for (uint8_t j = 0; j < aad; j++)
@@ -156,7 +156,6 @@ uint32_t* SevenZFormat::CRCHdr(ifstream *stream, uint64_t numPackStreams,bool sk
     }
     return (skip ? NULL : crc);
 }
-
 void SevenZFormat::PackInfoHdr(ifstream *stream){	
     SevenZPackInfoHdr *packInfo = new SevenZPackInfoHdr;
     packInfo->packPos = 32 + SevenZUINT64(stream); // offset starting at 0x20 after startHeader
@@ -170,9 +169,9 @@ void SevenZFormat::PackInfoHdr(ifstream *stream){
 	    for (uint64_t i = 0; i < packInfo->numPackStreams; i++)
 		packInfo->packSize[i] = SevenZUINT64(stream);
 	}else if (subsubHdrID == CRC){
-	    packInfo->crc = new uint32_t[packInfo->numPackStreams];
+	   // packInfo->crc = new uint32_t[packInfo->numPackStreams];
 	    for (uint64_t i = 0; i < packInfo->numPackStreams; i++)
-		packInfo->crc = CRCHdr(stream, packInfo->numPackStreams, READ);
+		CRCHdr(stream, packInfo->numPackStreams, SKIP);
 	}
     }
     data.packInfo = packInfo;
@@ -206,11 +205,49 @@ void SevenZFormat::CodersHdr(ifstream *stream){
 	stream->read(reinterpret_cast<char*>(&subsubHdrID), 1);	// (CRC)
     }
 
-    if (subsubHdrID == CRC)	    
-	CRCHdr(stream, data.numFolders, SKIP);
+    if (subsubHdrID == CRC){	    
+	    data.packInfo->crc = CRCHdr(stream, data.numFolders, READ);
+	    //cout << "crc2: " << data.packInfo->crc[0] << endl;
+    }
 
     stream->read(reinterpret_cast<char*>(&subsubHdrID), 1);	// (END)
 
+}
+
+void SevenZFormat::SubStreamInfoHdr(ifstream *stream){
+    uint8_t subsubHdrID = 1;
+    uint64_t a;
+    while (subsubHdrID != 0){
+	stream->read(reinterpret_cast<char*>(&subsubHdrID), 1); 
+	if (subsubHdrID == NUMUNPACKSTR){
+	    for (uint64_t i; i < data.numFolders; i++)
+		a = SevenZUINT64(stream);
+	}
+	if (subsubHdrID == SIZE){
+	    while (subsubHdrID != CRC){	
+		a = SevenZUINT64(stream);
+		stream->read(reinterpret_cast<char*>(&subsubHdrID), 1); 
+		if (subsubHdrID != CRC)
+		    stream->seekg(-1, stream->cur);
+	    }
+	}
+	if (subsubHdrID == CRC){
+	    uint32_t end[3] = {0xff,0xff,0xff};
+//	    uint32_t end = 0xffffffff;
+	    uint64_t count = 0;
+	    while (end[0] != 0x00 && end[1] != 0x00 && end[2] !=0x05){
+		stream->seekg(5,stream->cur);
+		stream->read(reinterpret_cast<char*>(&end[0]),1);
+		stream->read(reinterpret_cast<char*>(&end[1]),1);
+		stream->read(reinterpret_cast<char*>(&end[2]),1);
+		stream->seekg(-3,stream->cur);
+		//cout << end[2] << endl;
+		count++;
+	    }
+	    stream->seekg(-5*count, stream->cur);
+	    data.packInfo->crc = CRCHdr(stream, count, READ);
+	}
+    }
 }
 
 void SevenZFormat::readHeader(ifstream *stream){
@@ -221,7 +258,10 @@ void SevenZFormat::readHeader(ifstream *stream){
 	    PackInfoHdr(stream);
 	else if (subHdrID == UNPACKINFO){ 
 	    CodersHdr(stream);
+	    if (data.packInfo->crc == NULL)
+		SubStreamInfoHdr(stream);
 	    subHdrID = 0;	// fixed end we have all info we need
+
 	}
     }
 }
@@ -240,7 +280,7 @@ void SevenZFormat::copyStreamToBuffer(ifstream *stream, uint64_t pos, uint64_t s
     stream->seekg(save_pos);
 }
 
-int SevenZFormat::decompress(ifstream *istream, uint64_t numCoders){
+int SevenZFormat::decompressHdr(ifstream *istream, uint64_t numCoders){
     int lzma = 0;
     SizeT destlen = data.folders[0].unPackSize[0];
     SizeT srclen = data.packInfo->packSize[0];
@@ -273,6 +313,10 @@ int SevenZFormat::decompress(ifstream *istream, uint64_t numCoders){
     return destlen;
 }
 
+void SevenZFormat::data4Cracking(ifstream *istream){
+    copyStreamToBuffer(istream, data.packInfo->packPos,\
+	    data.packInfo->packSize[0], &data.encData);
+}
 void SevenZFormat::readInitInfo(ifstream *stream){
 
     uint8_t hdrID;
@@ -283,13 +327,15 @@ void SevenZFormat::readInitInfo(ifstream *stream){
 	// raw Main Header 
 	// only when only one file is compress and Header is not encrypted
 	data.type = RawHeader;
+	stream->seekg(1,stream->cur);
+	//cout << "jsem tu"<< endl;
 	readHeader(stream); 
     }else if (hdrID == ENCHDR){
 	data.type = EncHeader;
 	readHeader(stream);
 	codersInEncHdr = data.numFolders;
 	if (data.numFolders == 1 && data.folders[0].numCoders == 1){
-	    int fsize = decompress(stream, data.folders[0].numCoders); 
+	    int fsize = decompressHdr(stream, data.folders[0].numCoders); 
 
 	    ifstream rawhdr; 
 	    rawhdr.open("raw.hdr", ios_base::binary);
@@ -299,6 +345,7 @@ void SevenZFormat::readInitInfo(ifstream *stream){
 	} 
 	    // else : go cracking
     }
+    data4Cracking(stream);
 } 
 
 void SevenZFormat::init(string& filename){ 
@@ -332,10 +379,10 @@ void SevenZFormat::printInfo(){
     cout << "===============================" << endl;
 }
 CrackerFactory* SevenZFormat::getCPUCracker(){
-//    if(data.type == NONE)
+    if(data.type == NONE)
 	return NULL;
-//    else
-//	return new SevenZCrackerCPUFactory(&data);
+    else
+	return new SevenZCrackerCPUFactory(&data);
 }
 
 CrackerFactory* SevenZFormat::getGPUCracker(){

@@ -24,41 +24,47 @@
 #ifndef SevenZCRACKERCPU_H
 #define	SevenZCRACKERCPU_H
 
-#include "SevenZFormat.h"
 #include "Cracker.h"
-#include <zlib.h>
-#include "SevenZCracker.h"
+#include "SevenZFormat.h"
+#include <pthread.h>
+
 
 /**
- * Class for cracking PKSevenZ Stream Cipher on CPU
+ * Class for Standard ZIP AES Cracking
  */
-class SevenZCrackerCPU: public Cracker, protected SevenZCracker {
+class SevenZCrackerCPU: public Cracker {
 public:
-    SevenZCrackerCPU(std::vector<SevenZInitData> *data);
+    SevenZCrackerCPU(SevenZInitData *data);
     SevenZCrackerCPU(const SevenZCrackerCPU& orig);
     virtual ~SevenZCrackerCPU();
     //virtual void run();
 
     virtual CheckResult checkPassword(const std::string* password);
 
-    virtual void sharedDataInit();
-
+protected:
+    /**
+     * Similar to Microsoft CryptoDeriveKey()
+     * @param msg input to SHA1
+     * @param msgLen input length
+     * @param output result SHA1 hash
+     */
+    void prepareKey(const std::string* pass, std::string* output);
+    /**
+     * Similar to Microsoft CryptoDeriveKey()
+     * @param pass password
+     * @param passLen passwoed length
+     * @param output result key (hash)
+     */
+    void derive(const std::string* pass, uint8_t* output);
     
-private:
-    /**
-     * Pointer to data to verify
-     */
-    SevenZInitData *verify_data;
-    /**
-     * Pointer to high crc32 byte
-     */
-    uint8_t *high_CRC;
-    /**
-     * Number of files to crack
-     */
-    uint32_t files_count;
-    
-
+    uint8_t key[32];
+    uint8_t iv[16] = {0};
+    uint64_t destlen;
+    uint64_t srclen;
+    uint8_t *data;
+    uint8_t *raw;
+   // SevenZInitData *data;
+    SevenZInitData check_data;
 };
 
 #endif	/* SevenZCRACKERCPU_H */
