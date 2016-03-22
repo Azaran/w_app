@@ -138,7 +138,7 @@ void SevenZCrackerCPU::derive(const uint8_t* pass, uint8_t* output){
     memcpy(output, hash1ptr, 32);
 }
 void convertKey(const uint8_t* pass, uint8_t** key){
-    
+// TODO: rozchodit heslo    
     uint8_t key = new uint8_t[2*pass->length()];
     for (int i; i < pass->length(); i++)
     {

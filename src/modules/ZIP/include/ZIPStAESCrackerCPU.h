@@ -64,6 +64,10 @@ protected:
      */
     void derive(const uint8_t* pass, unsigned int passLen, uint8_t* output);
     
+    uint8_t key[32];
+    uint8_t *rdData;
+    uint8_t *vData;
+    uint8_t *tempKey;
     std::vector<ZIPInitData> *data;
     ZIPInitData check_data;
 };
