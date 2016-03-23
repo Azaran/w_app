@@ -28,7 +28,7 @@
 #include <iostream>
 #include "rijndael.h"
 #include "crc.h"
-#include "sha256.h"
+#include "Sha256.h"
 using namespace std;
 
 
@@ -40,14 +40,13 @@ SevenZCrackerCPU::SevenZCrackerCPU(SevenZInitData *data):check_data(*data){
     for (uint8_t i = 0; i < data->folders[0].coder[coder].propertySize-2; i++) 
     {
 	iv[i] = data->folders[0].coder[coder].property[i+2];
-	cout << hex << (int) iv[i] << " ";
     }
     cout << endl;
     this->destlen = data->folders[0].unPackSize[1];
     this->srclen = data->packInfo->packSize[0];
     cout << endl;
     cout << "destlen: " << destlen << endl;
-    cout << "srclen: " << srclen-15 << endl;
+    cout << "srclen: " << srclen << endl;
     this->raw = new uint8_t[destlen];
     this->data = new uint8_t[srclen];
     //rdData = new uint8_t [check_data.erdSize];
@@ -58,37 +57,76 @@ SevenZCrackerCPU::SevenZCrackerCPU(SevenZInitData *data):check_data(*data){
 SevenZCrackerCPU::SevenZCrackerCPU(const SevenZCrackerCPU& orig){}
 
 SevenZCrackerCPU::~SevenZCrackerCPU(){
+    delete[] data;
+    delete[] raw;
+    delete[] password;
 }
 
-CheckResult SevenZCrackerCPU::checkPassword(const std::uint8_t* pass) {
-    
+CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
+   
+    if (!passwordSet){
+	convertKey(pass);
+	passwordSet = true;
+    }
+
     ELzmaStatus status;
     SRes decode;
     Rijndael aes;
     ISzAlloc alloc = { SzAlloc, SzFree };
 
-    derive(pass, (uint8_t*)key);
+    hash(key);
     cout << "key: " << endl;
     for (int i = 0; i < 32; i++)
 	cout << std::hex <<(int) key[i] << " ";
     std::cout << std::endl; 	
+    for (int i = 0; i < 16; i++)
+	cout << hex << (int) iv[i] << " ";
+    std::cout << std::endl; 	
     aes.Init(false, key, check_data.keyLength, (uint8_t*)iv);
     aes.blockDecrypt(check_data.encData, srclen, data);
     for (uint64_t i =0; i < srclen; i++)
-	cout << hex << (int)data[i] << " " ;
+    {
+	if ( i%16 == 0)
+	    cout << endl;
+	if ( i%8 == 0)
+	    cout << " ";
+	cout << hex << setw(2) << setfill('0') << (int)check_data.encData[i] << " " ;
+    } 
     cout << endl;
     cout << endl;
-    srclen-=15; 
+    for (uint64_t i =0; i < srclen; i++)
+    {
+	if ( i%16 == 0)
+	    cout << endl;
+	if ( i%8 == 0)
+	    cout << " ";
+	cout << hex << setw(2) << setfill('0') << (int)data[i] << " " ;
+    } 
+    cout << endl;
+    cout << endl;
+    cout << "propsize: " << check_data.folders[0].coder[1].propertySize << endl;
+    for (uint64_t i =0; i < 5; i++)
+	cout << hex << setw(2) << setfill('0') << (int)check_data.folders[0].coder[1].property[i] << " " ;
+    srclen = check_data.packInfo->packSize[0];
     decode = LzmaDecode(raw, &destlen,\
 	    data, &srclen,\
-	    check_data.folders[0].coder[0].property,\
-	    check_data.folders[0].coder[0].propertySize,\
-	    LZMA_FINISH_END, &status, &alloc);
+	    check_data.folders[0].coder[1].property,\
+	    check_data.folders[0].coder[1].propertySize,\
+	    LZMA_FINISH_ANY, &status, &alloc);
     cout << "decode: " << decode << endl;
     cout << "status: " << status << endl;
+    cout << "destlen: " << destlen<< endl;
+    cout << "srclen: " << srclen << endl;
+    ofstream out;
+    out.open("new.txt", ios::binary);
+    for (uint64_t i =0; i < destlen; i++)
+    {
+	out << raw[i];
+    } 
+    out.close();
     uint32_t *crc;
     if (check_data.packInfo->crc != NULL)
-        cout << "crc" << check_data.packInfo->crc << endl;  
+        crc = check_data.packInfo->crc;  
     else{
 	cerr << "I couldnt find CRC in data structure." << endl;
 	exit(155);
@@ -98,51 +136,55 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::uint8_t* pass) {
     if (crc[0] == crc32(0, raw, destlen))
 	return CR_PASSWORD_MATCH;
     
+    exit(0);
     return CR_PASSWORD_WRONG;
 }
 
-void SevenZCrackerCPU::prepareKey(const uint8_t* pass, uint8_t* key){
-    std::ostringstream buffer; 
+void SevenZCrackerCPU::prepareKey(uint8_t* stretched_key){
     uint64_t i = 0;
     uint64_t iter = 1 << 19; // 2^19
+    int step = 8+passSize;
     // https://sourceforge.net/p/sevenzip/discussion/45797/thread/26314871/
-    // delka klice pri delce hesla 1 (1+8)*524288 = 4,718,592 znaku
-    // delka klice pri delce hesla 8 (8+8)*524288 = 8,388,608 znaku 
+    // delka klice pri delce hesla 1 (2+8)*524288 = znaku
+    // delka klice pri delce hesla 8 (16+8)*524288 =  znaku 
     //
-
-    cout << "passlen is: " << pass->length() << endl;    
-    while ( i < iter)
-	buffer << setw(16) << new_pass << setw(8) << setfill('0') << i++; 
-    cout << "last iter:" << hex << setw(2)<< setfill('0')<< new_pass  << setw(8) << setfill('0') << i;
-    *key = buffer.str();
-}
-
-
-void SevenZCrackerCPU::derive(const uint8_t* pass, uint8_t* output){
-    
-    uint8_t hash1[32];
-    uint8_t hash2[32];
-    uint8_t *hash1ptr = (uint8_t*) hash1;
-    uint8_t *hash2ptr = (uint8_t*) hash2;
-    uint64_t iter = (1 << 19);
-    cout << dec << "iter: " << iter << endl;
-    string key;
-    uint64_t keylen;
-    prepareKey(pass, &key);
-    sha256(reinterpret_cast<const uint8_t*>(key.c_str()),key.length(), (uint8_t*)hash1ptr);
-    while (--iter > 0 ){
-	sha256((const uint8_t*)hash1ptr, 32, hash2ptr);
-	std::swap(hash1ptr, hash2ptr);	
+    int j = 0;	
+    while ( i < iter){
+	for (j = 0; j < passSize; j++)
+	    stretched_key[i*step+j] = password[j];
+	memcpy(stretched_key+(i*step+j), &iter, 8);
+	i++;
     }
-    cout << dec << "iter: " << iter << endl;
-    memcpy(output, hash1ptr, 32);
 }
-void convertKey(const uint8_t* pass, uint8_t** key){
-// TODO: rozchodit heslo    
-    uint8_t key = new uint8_t[2*pass->length()];
-    for (int i; i < pass->length(); i++)
+
+void SevenZCrackerCPU::hash(uint8_t* output){
+
+    CSha256 sha;
+    Sha256_Init(&sha);
+    
+    uint8_t *ctr = password + passSize-8;
+    uint64_t numRounds = 1 << 19;
+    while (numRounds--)
     {
-	new_pass[i*2] = (pass->c_str())[i];
-	new_pass[i*2+1] = 0;
+	Sha256_Update(&sha, password, passSize);
+	for (unsigned i = 0; i < 8; i++)
+	    if (++(ctr[i]) != 0)
+		break;
+    }
+    Sha256_Final(&sha, output);
+}
+
+void SevenZCrackerCPU::convertKey(const string* pass){
+    
+    passSize = 2*pass->length() + 8; 
+    password = new uint8_t[passSize];
+    int i;
+    for (i=0; i < pass->length(); i++){
+	password[i*2] = (pass->c_str())[i];
+	password[i*2+1] = 0;
+
+    }
+    for (;i<passSize; i++){
+	password[i] = 0;
     }
 }

@@ -48,16 +48,23 @@ protected:
      * @param msgLen input length
      * @param output result SHA1 hash
      */
-    void prepareKey(const std::string* pass, std::string* output);
+    void prepareKey(uint8_t* stretched_key);
     /**
-     * Similar to Microsoft CryptoDeriveKey()
-     * @param pass password
-     * @param passLen passwoed length
+     * Based on 7zip CPP/Crypto/7zAES.cpp
      * @param output result key (hash)
      */
-    void derive(const std::string* pass, uint8_t* output);
-    
+    void hash(uint8_t* output);
+
+    /**
+     * Wannabe UTF-8 to UTF-16
+     * @param pass password
+     */
+    void convertKey(const string* pass);
+
     uint8_t key[32];
+    uint8_t *password;
+    uint64_t passSize;
+    bool passwordSet = false;
     uint8_t iv[16] = {0};
     uint64_t destlen;
     uint64_t srclen;

@@ -171,7 +171,7 @@ void SevenZFormat::PackInfoHdr(ifstream *stream){
 	}else if (subsubHdrID == CRC){
 	   // packInfo->crc = new uint32_t[packInfo->numPackStreams];
 	    for (uint64_t i = 0; i < packInfo->numPackStreams; i++)
-		CRCHdr(stream, packInfo->numPackStreams, SKIP);
+		packInfo->crc = CRCHdr(stream, packInfo->numPackStreams, READ);
 	}
     }
     data.packInfo = packInfo;
