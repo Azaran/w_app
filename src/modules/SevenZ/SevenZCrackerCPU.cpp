@@ -26,10 +26,11 @@
 #include <deque>
 #include <sstream>
 #include <iostream>
-#include "rijndael.h"
-#include "crc.h"
+#include "Aes.h"
+#include "7zCrc.h"
 #include "Sha256.h"
 using namespace std;
+
 
 
 SevenZCrackerCPU::SevenZCrackerCPU(SevenZInitData *data):check_data(*data){ 
@@ -71,8 +72,10 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
 
     ELzmaStatus status;
     SRes decode;
-    Rijndael aes;
+    uint32_t *aes = new uint32_t[AES_NUM_IVMRK_WORDS+3];
+    *aes = {0};
     ISzAlloc alloc = { SzAlloc, SzFree };
+
 
     hash(key);
     cout << "key: " << endl;
@@ -82,9 +85,14 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
     for (int i = 0; i < 16; i++)
 	cout << hex << (int) iv[i] << " ";
     std::cout << std::endl; 	
-    aes.Init(false, key, check_data.keyLength, (uint8_t*)iv);
-    aes.blockDecrypt(check_data.encData, srclen, data);
-    for (uint64_t i =0; i < srclen; i++)
+     
+    memcpy(data, check_data.encData, srclen); 
+    int offset = ((0 - (unsigned)(ptrdiff_t)aes) & 0xF) / sizeof(UInt32);
+    AesGenTables();
+    AesCbc_Init(aes+offset, iv);
+    Aes_SetKey_Dec(aes+offset+4, key, 32);
+    g_AesCbc_Decode(aes+offset, data, srclen/16);
+    for (uint64_t i = 0; i < srclen; i++)
     {
 	if ( i%16 == 0)
 	    cout << endl;
@@ -113,6 +121,15 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
 	    check_data.folders[0].coder[1].property,\
 	    check_data.folders[0].coder[1].propertySize,\
 	    LZMA_FINISH_ANY, &status, &alloc);
+    for (uint64_t i =0; i < destlen; i++)
+    {
+	if ( i%16 == 0)
+	    cout << endl;
+	if ( i%8 == 0)
+	    cout << " ";
+	cout << hex << setw(2) << setfill('0') << (int)raw[i] << " " ;
+    } 
+    cout << endl;
     cout << "decode: " << decode << endl;
     cout << "status: " << status << endl;
     cout << "destlen: " << destlen<< endl;
@@ -131,9 +148,10 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
 	cerr << "I couldnt find CRC in data structure." << endl;
 	exit(155);
     }
-    cout << "crccomp: " << crc32(0, raw, destlen) << endl;
+    CrcGenerateTable();
+    cout << "crccomp: " << CrcCalc(raw, destlen) << endl;
     cout <<"crc: " << crc[0] << endl;
-    if (crc[0] == crc32(0, raw, destlen))
+    if (crc[0] == CrcCalc(raw, destlen))
 	return CR_PASSWORD_MATCH;
     
     exit(0);
