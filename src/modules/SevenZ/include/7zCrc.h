@@ -6,6 +6,7 @@
 
 #include "7zTypes.h"
 
+EXTERN_C_BEGIN
 
 extern UInt32 g_CrcTable[];
 
@@ -19,5 +20,6 @@ void MY_FAST_CALL CrcGenerateTable(void);
 UInt32 MY_FAST_CALL CrcUpdate(UInt32 crc, const void *data, size_t size);
 UInt32 MY_FAST_CALL CrcCalc(const void *data, size_t size);
 
+EXTERN_C_END
 
 #endif

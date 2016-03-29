@@ -58,9 +58,6 @@ SevenZCrackerCPU::SevenZCrackerCPU(SevenZInitData *data):check_data(*data){
 SevenZCrackerCPU::SevenZCrackerCPU(const SevenZCrackerCPU& orig){}
 
 SevenZCrackerCPU::~SevenZCrackerCPU(){
-    delete[] data;
-    delete[] raw;
-    delete[] password;
 }
 
 CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
@@ -78,6 +75,7 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
 
 
     hash(key);
+/*
     cout << "key: " << endl;
     for (int i = 0; i < 32; i++)
 	cout << std::hex <<(int) key[i] << " ";
@@ -85,13 +83,16 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
     for (int i = 0; i < 16; i++)
 	cout << hex << (int) iv[i] << " ";
     std::cout << std::endl; 	
-     
+*/     
     memcpy(data, check_data.encData, srclen); 
     int offset = ((0 - (unsigned)(ptrdiff_t)aes) & 0xF) / sizeof(UInt32);
+    
     AesGenTables();
     AesCbc_Init(aes+offset, iv);
     Aes_SetKey_Dec(aes+offset+4, key, 32);
     g_AesCbc_Decode(aes+offset, data, srclen/16);
+
+    /*
     for (uint64_t i = 0; i < srclen; i++)
     {
 	if ( i%16 == 0)
@@ -115,12 +116,13 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
     cout << "propsize: " << check_data.folders[0].coder[1].propertySize << endl;
     for (uint64_t i =0; i < 5; i++)
 	cout << hex << setw(2) << setfill('0') << (int)check_data.folders[0].coder[1].property[i] << " " ;
-    srclen = check_data.packInfo->packSize[0];
+*/    
     decode = LzmaDecode(raw, &destlen,\
 	    data, &srclen,\
 	    check_data.folders[0].coder[1].property,\
 	    check_data.folders[0].coder[1].propertySize,\
 	    LZMA_FINISH_ANY, &status, &alloc);
+/*
     for (uint64_t i =0; i < destlen; i++)
     {
 	if ( i%16 == 0)
@@ -141,6 +143,7 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
 	out << raw[i];
     } 
     out.close();
+  */
     uint32_t *crc;
     if (check_data.packInfo->crc != NULL)
         crc = check_data.packInfo->crc;  
@@ -148,13 +151,17 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
 	cerr << "I couldnt find CRC in data structure." << endl;
 	exit(155);
     }
+    
     CrcGenerateTable();
-    cout << "crccomp: " << CrcCalc(raw, destlen) << endl;
-    cout <<"crc: " << crc[0] << endl;
+    
+    //cout << "crccomp: " << CrcCalc(raw, destlen) << endl;
+    //cout <<"crc: " << crc[0] << endl;
+    
     if (crc[0] == CrcCalc(raw, destlen))
 	return CR_PASSWORD_MATCH;
     
-    exit(0);
+    //exit(0);
+    
     return CR_PASSWORD_WRONG;
 }
 
