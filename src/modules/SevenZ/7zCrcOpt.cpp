@@ -1,8 +1,6 @@
 /* 7zCrcOpt.c -- CRC32 calculation
 2015-03-01 : Igor Pavlov : Public domain */
 
-#include "Precomp.h"
-
 #include "CpuArch.h"
 
 #ifndef MY_CPU_BE

@@ -113,6 +113,7 @@ struct SevenZInitData{
     SevenZEncType type;
     SevenZFolder *folders;
     SevenZPackInfoHdr *packInfo;
+    uint64_t *subStreamSize = NULL;
     uint64_t numFolders;
     uint16_t keyLength;
     uint8_t *encData;

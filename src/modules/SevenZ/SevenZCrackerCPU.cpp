@@ -36,23 +36,19 @@ using namespace std;
 SevenZCrackerCPU::SevenZCrackerCPU(SevenZInitData *data):check_data(*data){ 
 
     int coder = 0; 
-
-    cout << "IV: " << endl;
-    for (uint8_t i = 0; i < data->folders[0].coder[coder].propertySize-2; i++) 
-    {
+    for (uint8_t i = 0; i < data->folders[0].coder[coder].propertySize-2; i++)   
 	iv[i] = data->folders[0].coder[coder].property[i+2];
+    if (data->folders[0].numCoders == 1){
+	this->destlen = data->folders[0].unPackSize[0];
+    } else { 
+	this->destlen = data->folders[0].unPackSize[1];
     }
-    cout << endl;
-    this->destlen = data->folders[0].unPackSize[1];
+
     this->srclen = data->packInfo->packSize[0];
-    cout << endl;
-    cout << "destlen: " << destlen << endl;
-    cout << "srclen: " << srclen << endl;
+//    cout << "destlen: " << destlen<< endl;
+//    cout << "srclen: " << srclen << endl;
     this->raw = new uint8_t[destlen];
     this->data = new uint8_t[srclen];
-    //rdData = new uint8_t [check_data.erdSize];
-    //tempKey = new uint8_t [check_data.ivSize + check_data.erdSize];
-    //vData = new uint8_t [check_data.encSize];
 }
 
 SevenZCrackerCPU::SevenZCrackerCPU(const SevenZCrackerCPU& orig){}
@@ -62,38 +58,40 @@ SevenZCrackerCPU::~SevenZCrackerCPU(){
 
 CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
    
-    if (!passwordSet){
-	convertKey(pass);
-	passwordSet = true;
-    }
-
+    convertKey(pass);
+    hash(key);
     ELzmaStatus status;
     SRes decode;
     uint32_t *aes = new uint32_t[AES_NUM_IVMRK_WORDS+3];
     *aes = {0};
     ISzAlloc alloc = { SzAlloc, SzFree };
+    uint64_t dlen = destlen;
+    uint64_t slen = srclen;
 
-
-    hash(key);
-/*
     cout << "key: " << endl;
     for (int i = 0; i < 32; i++)
 	cout << std::hex <<(int) key[i] << " ";
+    std::cout << std::endl; 
+
+    for (int i = 0; i < passSize; i++)
+	cout << std::hex <<(int) password[i] << " ";
     std::cout << std::endl; 	
+/*
     for (int i = 0; i < 16; i++)
 	cout << hex << (int) iv[i] << " ";
     std::cout << std::endl; 	
-*/     
-    memcpy(data, check_data.encData, srclen); 
+*/
+    
+    memcpy(data, check_data.encData, slen); 
+   
     int offset = ((0 - (unsigned)(ptrdiff_t)aes) & 0xF) / sizeof(UInt32);
     
     AesGenTables();
     AesCbc_Init(aes+offset, iv);
     Aes_SetKey_Dec(aes+offset+4, key, 32);
-    g_AesCbc_Decode(aes+offset, data, srclen/16);
-
-    /*
-    for (uint64_t i = 0; i < srclen; i++)
+    g_AesCbc_Decode(aes+offset, data, slen/16);
+/*
+    for (uint64_t i = 0; i < slen; i++)
     {
 	if ( i%16 == 0)
 	    cout << endl;
@@ -103,7 +101,7 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
     } 
     cout << endl;
     cout << endl;
-    for (uint64_t i =0; i < srclen; i++)
+    for (uint64_t i =0; i < slen; i++)
     {
 	if ( i%16 == 0)
 	    cout << endl;
@@ -113,37 +111,48 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
     } 
     cout << endl;
     cout << endl;
-    cout << "propsize: " << check_data.folders[0].coder[1].propertySize << endl;
-    for (uint64_t i =0; i < 5; i++)
-	cout << hex << setw(2) << setfill('0') << (int)check_data.folders[0].coder[1].property[i] << " " ;
-*/    
-    decode = LzmaDecode(raw, &destlen,\
-	    data, &srclen,\
-	    check_data.folders[0].coder[1].property,\
-	    check_data.folders[0].coder[1].propertySize,\
-	    LZMA_FINISH_ANY, &status, &alloc);
-/*
-    for (uint64_t i =0; i < destlen; i++)
+*/
+
+    if ( check_data.folders[0].numCoders != 1)
     {
-	if ( i%16 == 0)
-	    cout << endl;
-	if ( i%8 == 0)
-	    cout << " ";
-	cout << hex << setw(2) << setfill('0') << (int)raw[i] << " " ;
-    } 
-    cout << endl;
-    cout << "decode: " << decode << endl;
-    cout << "status: " << status << endl;
-    cout << "destlen: " << destlen<< endl;
-    cout << "srclen: " << srclen << endl;
-    ofstream out;
-    out.open("new.txt", ios::binary);
-    for (uint64_t i =0; i < destlen; i++)
-    {
-	out << raw[i];
-    } 
-    out.close();
-  */
+	uint64_t dlen2 = dlen;
+	decode = LzmaDecode(raw, &dlen,\
+		data, &slen,\
+		check_data.folders[0].coder[1].property,\
+		check_data.folders[0].coder[1].propertySize,\
+		LZMA_FINISH_ANY, &status, &alloc);
+/*	
+	for (uint64_t i =0; i < dlen; i++)
+	{
+	    if ( i%16 == 0)
+		cout << endl;
+	    if ( i%8 == 0)
+		cout << " ";
+	    cout << hex << setw(2) << setfill('0') << (int)raw[i] << " " ;
+	}
+	cout << endl;
+	ofstream out;
+	out.open("new.txt", ios::binary | ios::out | ios::trunc);
+	for (uint64_t i =0; i < dlen; i++)
+	{
+	    out << raw[i];
+	} 
+	out.close();
+	    cout << "decode: " << decode << endl;
+	    cout << "status: " << status << endl;
+	    cout << "dlen: " << dlen << endl;
+	    cout << "dlen2: " << dlen2 << endl;
+	    cout << "slen: " << slen << endl;
+	    cout << "slen2: " << check_data.packInfo->packSize[0] << endl;
+	cout << "propsize: " << check_data.folders[0].coder[1].propertySize << endl;
+	for (uint64_t i =0; i < 5; i++)
+	    cout << hex << setw(2) << setfill('0') << (int)check_data.folders[0].coder[1].property[i] << " " ;
+	cout << endl;
+  */  
+    
+    } else raw = data;
+
+
     uint32_t *crc;
     if (check_data.packInfo->crc != NULL)
         crc = check_data.packInfo->crc;  
@@ -153,33 +162,18 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
     }
     
     CrcGenerateTable();
+    cout << "pass: " << *pass << endl;
+    uint64_t endOfCRCBlock = dlen;
+    if (check_data.subStreamSize != NULL)
+        endOfCRCBlock = check_data.subStreamSize[0];
+    cout << "crccomp: " << CrcCalc(raw, endOfCRCBlock) << endl;
+    cout <<"crc: " << crc[0] << endl;
     
-    //cout << "crccomp: " << CrcCalc(raw, destlen) << endl;
-    //cout <<"crc: " << crc[0] << endl;
-    
-    if (crc[0] == CrcCalc(raw, destlen))
+    if (crc[0] == CrcCalc(raw, endOfCRCBlock))
 	return CR_PASSWORD_MATCH;
     
-    //exit(0);
-    
+  //  exit(0);
     return CR_PASSWORD_WRONG;
-}
-
-void SevenZCrackerCPU::prepareKey(uint8_t* stretched_key){
-    uint64_t i = 0;
-    uint64_t iter = 1 << 19; // 2^19
-    int step = 8+passSize;
-    // https://sourceforge.net/p/sevenzip/discussion/45797/thread/26314871/
-    // delka klice pri delce hesla 1 (2+8)*524288 = znaku
-    // delka klice pri delce hesla 8 (16+8)*524288 =  znaku 
-    //
-    int j = 0;	
-    while ( i < iter){
-	for (j = 0; j < passSize; j++)
-	    stretched_key[i*step+j] = password[j];
-	memcpy(stretched_key+(i*step+j), &iter, 8);
-	i++;
-    }
 }
 
 void SevenZCrackerCPU::hash(uint8_t* output){
@@ -201,15 +195,20 @@ void SevenZCrackerCPU::hash(uint8_t* output){
 
 void SevenZCrackerCPU::convertKey(const string* pass){
     
-    passSize = 2*pass->length() + 8; 
-    password = new uint8_t[passSize];
+    if ( 2*pass->length()+8 > passSize){
+	delete[] password;
+	passSize = 2*pass->length() + 8; 
+	password = new uint8_t[passSize];
+    }
+    cout << hex << "passSize: " << passSize << endl;
     int i;
     for (i=0; i < pass->length(); i++){
-	password[i*2] = (pass->c_str())[i];
+	password[i*2] = (int)(pass->c_str())[i];
 	password[i*2+1] = 0;
-
+	cout << " p: " << (int) password[i*2];
+	cout << " p1: " << (int) password[i*2 +1];
     }
-    for (;i<passSize; i++){
+    for (i = i*2+1;i<passSize; i++){
 	password[i] = 0;
     }
 }

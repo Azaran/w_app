@@ -141,19 +141,19 @@ uint32_t* SevenZFormat::CRCHdr(ifstream *stream, uint64_t numPackStreams,bool sk
     uint32_t* crc;
     if (!skip)
 	crc = new uint32_t[numPackStreams];
-    for (uint64_t i = 0; i < numPackStreams; i++){
-	uint8_t aad;
-	stream->read(reinterpret_cast<char*>(&aad), 1);
-	if (aad == 0){
-	    cerr << "File reading error. AllAreDefined == 0." << endl; // TODO: figure out how AAD works
-	    exit(153);
-	}
-	for (uint8_t j = 0; j < aad; j++)
-	    if(skip)
-		stream->seekg(4, stream->cur);
-	    else
-		stream->read(reinterpret_cast<char*>(&(crc[j])), 4);  // CRCs[NumDefined]
+  //  for (uint64_t i = 0; i < numPackStreams; i++){
+    uint8_t aad;
+    stream->read(reinterpret_cast<char*>(&aad), 1);
+    if (aad == 0){
+	cerr << "File reading error. AllAreDefined == 0." << endl; // TODO: figure out how AAD works
+	exit(153);
     }
+    for (uint8_t j = 0; j < numPackStreams; j++)
+	if(skip)
+	    stream->seekg(4, stream->cur);
+	else
+	    stream->read(reinterpret_cast<char*>(&(crc[j])), 4);  // CRCs[NumDefined]
+    //}
     return (skip ? NULL : crc);
 }
 void SevenZFormat::PackInfoHdr(ifstream *stream){	
@@ -207,7 +207,6 @@ void SevenZFormat::CodersHdr(ifstream *stream){
 
     if (subsubHdrID == CRC){	    
 	    data.packInfo->crc = CRCHdr(stream, data.numFolders, READ);
-	    //cout << "crc2: " << data.packInfo->crc[0] << endl;
     }
 
     stream->read(reinterpret_cast<char*>(&subsubHdrID), 1);	// (END)
@@ -216,35 +215,37 @@ void SevenZFormat::CodersHdr(ifstream *stream){
 
 void SevenZFormat::SubStreamInfoHdr(ifstream *stream){
     uint8_t subsubHdrID = 1;
-    uint64_t a;
+    uint64_t unpackStreamsInFolders = 0;
     while (subsubHdrID != 0){
 	stream->read(reinterpret_cast<char*>(&subsubHdrID), 1); 
 	if (subsubHdrID == NUMUNPACKSTR){
-	    for (uint64_t i; i < data.numFolders; i++)
-		a = SevenZUINT64(stream);
+	    cout << "numFolders: " << data.numFolders << endl;
+	    for (uint64_t i = 0; i < data.numFolders; i++)
+		unpackStreamsInFolders += SevenZUINT64(stream);
 	}
 	if (subsubHdrID == SIZE){
-	    while (subsubHdrID != CRC){	
-		a = SevenZUINT64(stream);
-		stream->read(reinterpret_cast<char*>(&subsubHdrID), 1); 
-		if (subsubHdrID != CRC)
-		    stream->seekg(-1, stream->cur);
-	    }
+	    if(unpackStreamsInFolders == 0)
+		unpackStreamsInFolders = 1;
+	    data.subStreamSize = new uint64_t[data.numFolders];
+	    for (uint64_t i = 0; i < data.numFolders; i++)
+		data.subStreamSize[i] = SevenZUINT64(stream);
 	}
 	if (subsubHdrID == CRC){
 	    uint32_t end[3] = {0xff,0xff,0xff};
-//	    uint32_t end = 0xffffffff;
 	    uint64_t count = 0;
-	    while (end[0] != 0x00 && end[1] != 0x00 && end[2] !=0x05){
-		stream->seekg(5,stream->cur);
+	    stream->seekg(1, stream->cur);
+	    while ((end[0] != 0x00 && end[1] != 0x00 && end[2] !=0x05 ) && count < 5){
+		stream->seekg(4,stream->cur);
 		stream->read(reinterpret_cast<char*>(&end[0]),1);
 		stream->read(reinterpret_cast<char*>(&end[1]),1);
 		stream->read(reinterpret_cast<char*>(&end[2]),1);
 		stream->seekg(-3,stream->cur);
-		//cout << end[2] << endl;
+//		cout << hex << "end[0]: " << end[0];
+//		cout << " end[1]: " << end[1];
+//		cout << " end[2]: " << end[2] << endl;
 		count++;
 	    }
-	    stream->seekg(-5*count, stream->cur);
+	    stream->seekg(-4*count-1, stream->cur);
 	    data.packInfo->crc = CRCHdr(stream, count, READ);
 	}
     }
@@ -282,33 +283,37 @@ void SevenZFormat::copyStreamToBuffer(ifstream *stream, uint64_t pos, uint64_t s
 
 int SevenZFormat::decompressHdr(ifstream *istream, uint64_t numCoders){
     int lzma = 0;
-    SizeT destlen = data.folders[0].unPackSize[0];
+    SizeT destlen = 0;
     SizeT srclen = data.packInfo->packSize[0];
     uint8_t *compbuf;
-    uint8_t rawbuf[destlen];
+    uint8_t *rawbuf;
     SRes decode;
     ELzmaStatus status;
 
     for (int i = 0; i < numCoders; i++){
 	if (data.folders[0].coder[i].coderID[0] == 0x03)
-	    if (data.folders[0].coder[i].coderID[1] == 0x01)
-		lzma = 1;
-	if (lzma){
-	    copyStreamToBuffer(istream, data.packInfo->packPos,\
-		    data.packInfo->packSize[0], &compbuf);
-	    decode = LzmaDecode((uint8_t*)rawbuf, &destlen,\
-		    compbuf, &srclen,\
-		    data.folders[0].coder[0].property,\
-		    data.folders[0].coder[0].propertySize,\
-		    LZMA_FINISH_ANY, &status, &alloc);
-	   
-	   // Might need some optimalization
-	   ofstream rawhdr;
-	   rawhdr.open ("raw.hdr", ios::out | ios::trunc | ios::binary);
-	   for (uint64_t i = 1; i < destlen; i++)
-	       rawhdr << rawbuf[i];
-	   rawhdr.close(); 
-	}
+	    if (data.folders[0].coder[i].coderID[1] == 0x01){
+		destlen = data.folders[0].unPackSize[0];
+		rawbuf = new uint8_t[destlen];
+		copyStreamToBuffer(istream, data.packInfo->packPos,\
+			data.packInfo->packSize[0], &compbuf);
+		decode = LzmaDecode((uint8_t*)rawbuf, &destlen,\
+			compbuf, &srclen,\
+			data.folders[0].coder[0].property,\
+			data.folders[0].coder[0].propertySize,\
+			LZMA_FINISH_END, &status, &alloc);
+		if ( destlen != data.folders[0].unPackSize[0] || srclen != data.packInfo->packSize[0]){
+		    cerr << "Something went wrong with decompression!" << endl;
+		    exit(156);
+		}
+		cout << "decode: " << decode << endl;
+		// Might need some optimalization
+		ofstream rawhdr;
+		rawhdr.open ("raw.hdr", ios::out | ios::trunc | ios::binary);
+		for (uint64_t i = 0; i < destlen; i++)
+		    rawhdr << rawbuf[i];
+		rawhdr.close(); 
+	    }
     }
     return destlen;
 }
@@ -328,7 +333,6 @@ void SevenZFormat::readInitInfo(ifstream *stream){
 	// only when only one file is compress and Header is not encrypted
 	data.type = RawHeader;
 	stream->seekg(1,stream->cur);
-	//cout << "jsem tu"<< endl;
 	readHeader(stream); 
     }else if (hdrID == ENCHDR){
 	data.type = EncHeader;
@@ -336,12 +340,14 @@ void SevenZFormat::readInitInfo(ifstream *stream){
 	codersInEncHdr = data.numFolders;
 	if (data.numFolders == 1 && data.folders[0].numCoders == 1){
 	    int fsize = decompressHdr(stream, data.folders[0].numCoders); 
+	    if (fsize != 0 ){
 
 	    ifstream rawhdr; 
 	    rawhdr.open("raw.hdr", ios_base::binary);
 	    readHeader(&rawhdr);
 	    rawhdr.close();
-	    remove("raw.hdr");	    // clear the file
+	    //remove("raw.hdr");	    // clear the file
+	    }
 	} 
 	    // else : go cracking
     }
