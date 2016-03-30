@@ -67,7 +67,7 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
     ISzAlloc alloc = { SzAlloc, SzFree };
     uint64_t dlen = destlen;
     uint64_t slen = srclen;
-
+/*
     cout << "key: " << endl;
     for (int i = 0; i < 32; i++)
 	cout << std::hex <<(int) key[i] << " ";
@@ -76,7 +76,6 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
     for (int i = 0; i < passSize; i++)
 	cout << std::hex <<(int) password[i] << " ";
     std::cout << std::endl; 	
-/*
     for (int i = 0; i < 16; i++)
 	cout << hex << (int) iv[i] << " ";
     std::cout << std::endl; 	
@@ -162,12 +161,12 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
     }
     
     CrcGenerateTable();
-    cout << "pass: " << *pass << endl;
+//    cout << "pass: " << *pass << endl;
     uint64_t endOfCRCBlock = dlen;
     if (check_data.subStreamSize != NULL)
         endOfCRCBlock = check_data.subStreamSize[0];
-    cout << "crccomp: " << CrcCalc(raw, endOfCRCBlock) << endl;
-    cout <<"crc: " << crc[0] << endl;
+//    cout << "crccomp: " << CrcCalc(raw, endOfCRCBlock) << endl;
+//    cout <<"crc: " << crc[0] << endl;
     
     if (crc[0] == CrcCalc(raw, endOfCRCBlock))
 	return CR_PASSWORD_MATCH;
@@ -200,13 +199,13 @@ void SevenZCrackerCPU::convertKey(const string* pass){
 	passSize = 2*pass->length() + 8; 
 	password = new uint8_t[passSize];
     }
-    cout << hex << "passSize: " << passSize << endl;
+//    cout << hex << "passSize: " << passSize << endl;
     int i;
     for (i=0; i < pass->length(); i++){
 	password[i*2] = (int)(pass->c_str())[i];
 	password[i*2+1] = 0;
-	cout << " p: " << (int) password[i*2];
-	cout << " p1: " << (int) password[i*2 +1];
+//	cout << " p: " << (int) password[i*2];
+//	cout << " p1: " << (int) password[i*2 +1];
     }
     for (i = i*2+1;i<passSize; i++){
 	password[i] = 0;
