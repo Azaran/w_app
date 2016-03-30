@@ -65,8 +65,8 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
     uint32_t *aes = new uint32_t[AES_NUM_IVMRK_WORDS+3];
     *aes = {0};
     ISzAlloc alloc = { SzAlloc, SzFree };
-    uint64_t dlen = destlen;
-    uint64_t slen = srclen;
+    SizeT dlen = destlen;
+    SizeT slen = srclen;
 /*
     cout << "key: " << endl;
     for (int i = 0; i < 32; i++)
@@ -114,7 +114,6 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
 
     if ( check_data.folders[0].numCoders != 1)
     {
-	uint64_t dlen2 = dlen;
 	decode = LzmaDecode(raw, &dlen,\
 		data, &slen,\
 		check_data.folders[0].coder[1].property,\
