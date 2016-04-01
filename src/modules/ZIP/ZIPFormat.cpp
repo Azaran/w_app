@@ -141,6 +141,7 @@ ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream){
 
 		stream->read(reinterpret_cast<char*>(&data.ivSize),sizeof(uint16_t));
 		std::cout << data.ivSize << std::endl;
+		data.ivData = new uint8_t [data.ivSize];
 		stream->read(reinterpret_cast<char*>(data.ivData),data.ivSize);
 
 		stream->seekg(4, stream->cur);  // Size
@@ -308,13 +309,16 @@ ZIPInitData::ZIPInitData(const ZIPInitData& orig){
     this->encSize = orig.encSize;
     this->erdSize = orig.erdSize;
     this->ivSize = orig.ivSize;
-    this->encData = orig.encData;
-    this->erdData = orig.erdData;
-    this->ivData = orig.ivData;
     this->saltLen = orig.saltLen;
     ::memcpy(this->salt,orig.salt,16);
     ::memcpy(this->verifier,orig.verifier,2);
     ::memcpy(this->authCode,orig.authCode,10);
     ::memcpy(this->streamBuffer,orig.streamBuffer,12);
+    this->encData = new uint8_t[orig.encSize];
+    this->erdData = new uint8_t[orig.erdSize];
+    this->ivData = new uint8_t[orig.ivSize];
+    ::memcpy(this->encData, orig.encData, orig.encSize);
+    ::memcpy(this->erdData, orig.erdData, orig.erdSize);
+    ::memcpy(this->ivData, orig.ivData, orig.ivSize);
 }
 
