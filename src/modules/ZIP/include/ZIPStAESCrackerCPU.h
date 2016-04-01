@@ -27,6 +27,7 @@
 #include "Cracker.h"
 #include "ZIPFormat.h"
 #include <pthread.h>
+#include "rijndael.h"
 
 
 /**
@@ -70,6 +71,7 @@ protected:
     uint8_t *tempKey;
     std::vector<ZIPInitData> *data;
     ZIPInitData check_data;
+    Rijndael aes;
 };
 
 #endif	/* ZIPStAESCRACKERCPU_H */

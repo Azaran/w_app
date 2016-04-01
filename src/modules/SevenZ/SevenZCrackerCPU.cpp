@@ -49,6 +49,8 @@ SevenZCrackerCPU::SevenZCrackerCPU(SevenZInitData *data):check_data(*data){
 //    cout << "srclen: " << srclen << endl;
     this->raw = new uint8_t[destlen];
     this->data = new uint8_t[srclen];
+    AesGenTables();
+    CrcGenerateTable();
 }
 
 SevenZCrackerCPU::SevenZCrackerCPU(const SevenZCrackerCPU& orig){}
@@ -85,7 +87,6 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
    
     int offset = ((0 - (unsigned)(ptrdiff_t)aes) & 0xF) / sizeof(UInt32);
     
-    AesGenTables();
     AesCbc_Init(aes+offset, iv);
     Aes_SetKey_Dec(aes+offset+4, key, 32);
     g_AesCbc_Decode(aes+offset, data, slen/16);
@@ -159,7 +160,6 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
 	exit(155);
     }
     
-    CrcGenerateTable();
 //    cout << "pass: " << *pass << endl;
     uint64_t endOfCRCBlock = dlen;
     if (check_data.subStreamSize != NULL)

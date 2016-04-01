@@ -22,7 +22,6 @@
  */
 
 #include "ZIPStAESCrackerCPU.h"
-#include "rijndael.h"
 #include <deque>
 #include <string.h>
 #include <iostream>
@@ -53,7 +52,6 @@ CheckResult ZIPStAESCrackerCPU::checkPassword(const std::string* pass) {
 
     derive(reinterpret_cast<const uint8_t*>(pass->c_str()), pass->length(), (uint8_t*)key);
     
-    Rijndael aes;
     aes.Init(false, key, check_data.keyLength, check_data.ivData);
     aes.blockDecrypt(check_data.erdData, check_data.erdSize, rdData);
 
