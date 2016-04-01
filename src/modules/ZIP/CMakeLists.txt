@@ -7,10 +7,10 @@ set(WRATHION_MODULE_NAME wrathion_module_zip)
 file( GLOB component_SOURCES *.cpp )
 add_library(${WRATHION_MODULE_NAME} SHARED ${component_SOURCES})
 if(WIN32)
-  target_link_libraries(${WRATHION_MODULE_NAME} wrathion_core z.dll ssl crypto)
+  target_link_libraries(${WRATHION_MODULE_NAME} wrathion_core z.dll cryptopp)  
 endif()
 if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-  target_link_libraries(${WRATHION_MODULE_NAME} wrathion_core z.so ssl crypto)
+  target_link_libraries(${WRATHION_MODULE_NAME} wrathion_core z.so cryptopp)
 endif()
 
 

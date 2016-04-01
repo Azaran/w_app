@@ -26,7 +26,28 @@
 #include <string.h>
 #include <iostream>
 #include "crc.h"
-#include <openssl/des.h>
+
+#include <cryptopp/cryptlib.h>
+using CryptoPP::Exception;
+
+#include <cryptopp/hex.h>
+using CryptoPP::HexEncoder;
+using CryptoPP::HexDecoder;
+
+#include <cryptopp/filters.h>
+using CryptoPP::StringSink;
+using CryptoPP::StringSource;
+using CryptoPP::StreamTransformationFilter;
+
+#include <cryptopp/des.h>
+using CryptoPP::DES_EDE3;
+
+#include <cryptopp/modes.h>
+using CryptoPP::CBC_Mode;
+
+#include <cryptopp/secblock.h>
+using CryptoPP::SecByteBlock;
+
 using namespace std;
 
 ZIPTDESCrackerCPU::ZIPTDESCrackerCPU(std::vector<ZIPInitData> *data):data(data) {
@@ -50,8 +71,10 @@ ZIPTDESCrackerCPU::~ZIPTDESCrackerCPU() {
 CheckResult ZIPTDESCrackerCPU::checkPassword(const std::string* pass) {
     
     uint32_t crc = 0;
-
+    
     derive(reinterpret_cast<const uint8_t*>(pass->c_str()), pass->length(), (uint8_t*)key);
+
+    
     tdesDecrypt(key, check_data.erdData, check_data.erdSize, rdData); 
     
     cout << "ivData: " << endl;
@@ -71,17 +94,15 @@ CheckResult ZIPTDESCrackerCPU::checkPassword(const std::string* pass) {
     }
     cout << endl;
     
-    tdesDecrypt(key, check_data.encData, check_data.encSize, vData);
-    
-    cout << "vData: " << endl;
+    cout << "rdData: " << endl;
     for (int i=0; i < check_data.erdSize; i++){
         cout << hex << setw(2) << setfill('0') << (int)rdData[i] << " ";
     }
     cout << endl;
     memcpy(tempKey, check_data.ivData, check_data.ivSize);
-    memcpy(tempKey+check_data.ivSize, rdData, check_data.erdSize-16);
+    memcpy(tempKey+check_data.ivSize, rdData, check_data.erdSize);
 
-    derive(tempKey, check_data.ivSize+check_data.erdSize-16, key);   
+    derive(tempKey, check_data.ivSize+check_data.erdSize, key);   
 
     cout << "key: " << endl;
     for (int i=0; i < 21; i++){
@@ -388,52 +409,19 @@ void ZIPTDESCrackerCPU::prepareKey(uint8_t *key, uint8_t *output){
 }
 
 void ZIPTDESCrackerCPU::tdesDecrypt(uint8_t *key, uint8_t *cipher, uint32_t cipherLen, uint8_t *output){
-   
-    /* Triple DES key for Encryption and Decryption */
-    DES_cblock k1;
-    DES_cblock k2;
-    DES_cblock k3;
-    DES_key_schedule SchKey1,SchKey2,SchKey3;
-  /* 
-    uint8_t buf[8];
-    prepareKey(key, (uint8_t*)buf);
-    memcpy(&k1, &buf, 8);
-    prepareKey(key+7, (uint8_t*)buf);
-    memcpy(&k2, &buf, 8);
-    prepareKey(key+14, (uint8_t*)buf);
-    memcpy(&k3, &buf, 8);
-    /
-
-    cout << "k: ";
-    for (int i=0; i < 8; i++)
-        cout << hex <<setw(2) << setfill('0') <<  (int)k1[i] << " ";
-    for (int i=0; i < 8; i++)
-        cout << hex << setw(2) << setfill('0') << (int)k2[i] << " ";
-    for (int i=0; i < 8; i++)
-        cout << hex << setw(2) << setfill('0') << (int)k3[i] << " ";
-    cout << endl;
-
-    DES_set_odd_parity(&k1);
-    DES_set_odd_parity(&k2);
-    DES_set_odd_parity(&k3);
-    DES_cblock iv; 
     
-    prepareKey(check_data.ivData, (uint8_t*)buf);
-    memcpy(&iv, (uint8_t*) buf, 8);
-    */
-  //  DES_set_odd_parity(&iv);
-    memcpy(&k1, key, 7);
-    memcpy(&k2, key+7, 7);
-    memcpy(&k3, key+14, 7);
-    DES_cblock iv; 
-    memcpy(&iv, check_data.ivData, 8);
-    cout << "IV: ";
-    for (int i=0; i < 8; i++)
-        cout << hex <<setw(2) << setfill('0') <<  (int)iv[i] << " ";
-    cout << endl; 
-    DES_set_key_unchecked(&k1, &SchKey1);
-    DES_set_key_unchecked(&k2, &SchKey2);
-    DES_set_key_unchecked(&k3, &SchKey3);
+    string scipher((char*)cipher), recovered;
+
+    CBC_Mode< DES_EDE3 >::Decryption d;
+    d.SetKeyWithIV(key, DES_EDE3::DEFAULT_KEYLENGTH, check_data.ivData);
     
-    DES_ede3_cbc_encrypt( cipher, output, cipherLen, &SchKey1, &SchKey2, &SchKey3,&iv,DES_DECRYPT);
+    // The StreamTransformationFilter removes
+    //  padding as required.
+    StringSource s(cipher, true, 
+	    new StreamTransformationFilter(d,
+		new StringSink(recovered)
+		) // StreamTransformationFilter
+	    ); // StringSource
+
+    memcpy(output, recovered.c_str(), recovered.length());
 }
