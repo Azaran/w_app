@@ -27,22 +27,15 @@ ZIPStAESCrackerGPU::ZIPStAESCrackerGPU(std::vector<ZIPInitData> *data) {
     
     for(int i = 0;i< data->size();i++){
         if((*data)[i].dataLen > 0){
-            this->data = (*data)[i];
+	    cpu = new ZIPStAESCrackerCPU(&data[i]);
             break;
         }
     }
     
-    kernelFile = "kernels/zip_aes_kernel.cl";
-    switch(this->data.keyLength){
-        case 128:
-            kernelName = "zip_aes128_kernel";break;
-        case 192:
-            kernelName = "zip_aes192_kernel";break;
-        case 256:
-            kernelName = "zip_aes256_kernel";break;
-        default:
-            break;
-    }
+    
+    kernelFile = "kernels/zip_staes_kernel.cl";
+    kernelName = "zip_staes_kernel";
+
 }
 
 ZIPStAESCrackerGPU::ZIPStAESCrackerGPU(const ZIPStAESCrackerGPU& orig) {
@@ -52,30 +45,37 @@ ZIPStAESCrackerGPU::~ZIPStAESCrackerGPU() {
 }
 
 bool ZIPStAESCrackerGPU::initData() {
-    salt_buffer = cl::Buffer(context,CL_MEM_READ_ONLY,sizeof(char)*16);
-    verifier_buffer = cl::Buffer(context,CL_MEM_READ_ONLY,sizeof(char)*2);
-    
-    que.enqueueWriteBuffer(salt_buffer,CL_TRUE,0,sizeof(char)*16,data.salt);
-    que.enqueueWriteBuffer(verifier_buffer,CL_TRUE,0,sizeof(char)*2,data.verifier);
-    
-    kernel.setArg(userParamIndex,salt_buffer);
-    kernel.setArg(userParamIndex+1, verifier_buffer);
+    erdData = cl::Buffer(context, CL_MEM_READ_WRITE, cpu->check_data.erdSize);
+    encData = cl::Buffer(context, CL_MEM_READ_WRITE, cpu->check_data.encSize);
+    iv =      cl::Buffer(context, CL_MEM_READ_WRITE, 16); 
+
+    // Passing data to the kernel via global memory
+    que.enqueueWriteBuffer(erdData, CL_TRUE, 0,\
+	    cpu->check_data.erdSize, cpu->check_data.erdData);
+    que.enqueueWriteBuffer(encData, CL_TRUE, 0,\
+	    cpu->check_data.encSize, cpu->check_data.encData);
+    que.enqueueWriteBuffer(iv, CL_TRUE, 0, 16, cpu->check_data.ivData);
+   
+    kernel.setArg(userParamIndex, erdData);
+    kernel.setArg(userParamIndex+1, encData);
+    kernel.setArg(userParamIndex+2, iv);
+    kernel.setArg(userParamIndex+3, cpu->check_data.keyLength);
+    kernel.setArg(userParamIndex+4, cpu->check_data.erdSize);
+    kernel.setArg(userParamIndex+5, cpu->check_data.encSize);
+
+    // Dynamic allocation of kernel local memory
+    kernel.setArg(userParamIndex+6, cl::__local(cpu->check_data.erdSize));
+    kernel.setArg(userParamIndex+7, cl::__local(cpu->check_data.encSize));
+    kernel.setArg(userParamIndex+8, cl::__local(cpu->check_data.erdSize + 32));
     return true;
 }
 
 bool ZIPStAESCrackerGPU::verifyPassword(std::string& pass) {
-    uint8_t keyData[128],authCode[20];
-    uint8_t *key;
-    pbkdf2_sha1(reinterpret_cast<const uint8_t*>(pass.c_str()),pass.length(),data.salt,data.saltLen,1000,data.keyLength/4,keyData);
-    key = keyData+(data.keyLength/8);
-    hmac_sha1(data.encData,data.dataLen,key,data.keyLength/8,authCode);
-    if(::memcmp(authCode,data.authCode,10) == 0){
-        return true;
-    }
-    return false;
+     std::cout << std::endl;
+     std::cout << "pass: " << pass << std::endl;
+     return !cpu->checkPassword(&pass);
+
 }
-
-
 
 #define ROL(x, n) ((x << n) | ((x) >> (sizeof(n)*8 - n)))
 
@@ -116,19 +116,19 @@ bool ZIPStAESCrackerGPU::verifyPassword(std::string& pass) {
         ROUNDTAIL(a, b, e, F4(b, c, d), i, 0xCA62C1D6, w)
 
 void ZIPStAESCrackerGPU::sha1(const uint8_t* msg,unsigned int len,uint8_t* output){
-    unsigned int h0 = 0x67452301;
-    unsigned int h1 = 0xEFCDAB89;
-    unsigned int h2 = 0x98BADCFE;
-    unsigned int h3 = 0x10325476;
-    unsigned int h4 = 0xC3D2E1F0;
+    uint32_t h0 = 0x67452301;
+    uint32_t h1 = 0xEFCDAB89;
+    uint32_t h2 = 0x98BADCFE;
+    uint32_t h3 = 0x10325476;
+    uint32_t h4 = 0xC3D2E1F0;
     
-    unsigned int chunks = ((len+9)/64)+1;
-    unsigned int padSpace = 64-(len%64);
-    unsigned int padInChunk;
+    uint32_t chunks = ((len+9)/64)+1;
+    uint32_t padSpace = 64-(len%64);
+    uint32_t padInChunk;
     bool longPad;
     
-    unsigned char msg_pad[64];
-    unsigned int w[80] = {0};
+    uint8_t msg_pad[64];
+    uint32_t w[80] = {0};
     
     if(padSpace < 9){
         padInChunk = chunks-2;
@@ -143,42 +143,44 @@ void ZIPStAESCrackerGPU::sha1(const uint8_t* msg,unsigned int len,uint8_t* outpu
         if(chunk < padInChunk){
             ::memcpy(msg_pad,msg+chunk*64,64);
         }else if(chunk == padInChunk){
-            unsigned int padStart = len%64;
-            ::memcpy(msg_pad,msg+chunk*64,padStart);
+            uint32_t padStart = len%64;
+            memcpy(msg_pad,msg+chunk*64,padStart);
             msg_pad[padStart] = 0x80;
             if(longPad){
-                for(unsigned int i = padStart+1;i<64;i++){
+                // pad in last two chunks
+                for(uint32_t i = padStart+1;i<64;i++){
                     msg_pad[i] = 0;
                 }
             }else{
-                for(unsigned int i = padStart+1;i<64-4;i++){
+                // pad in last chunk
+                for(uint32_t i = padStart+1;i<64-4;i++){
                     msg_pad[i] = 0;
                 }
-                unsigned long long int bit_len = len*8;
+                uint64_t bit_len = len*8;
                 msg_pad[60] = (bit_len >> 24) & 0xFF;
                 msg_pad[61] = (bit_len >> 16) & 0xFF;
                 msg_pad[62] = (bit_len >> 8) & 0xFF;
                 msg_pad[63] = bit_len & 0xFF;
             }
         }else{
-            for(unsigned int i = 0;i<64-4;i++){
+            for(uint32_t i = 0;i<64-4;i++){
                     msg_pad[i] = 0;
             }
-            unsigned long long int bit_len = len*8;
+            uint64_t bit_len = len*8;
             msg_pad[60] = (bit_len >> 24) & 0xFF;
             msg_pad[61] = (bit_len >> 16) & 0xFF;
             msg_pad[62] = (bit_len >> 8) & 0xFF;
             msg_pad[63] = bit_len & 0xFF;
         }
         
-        unsigned int register a = h0;
-        unsigned int register b = h1;
-        unsigned int register c = h2;
-        unsigned int register d = h3;
-        unsigned int register e = h4;
+        uint32_t a = h0;
+        uint32_t b = h1;
+        uint32_t c = h2;
+        uint32_t d = h3;
+        uint32_t e = h4;
 
         
-    ROUND0s(a, b, c, d, e,  0, w, msg_pad)
+	ROUND0s(a, b, c, d, e,  0, w, msg_pad)
 	ROUND0s(e, a, b, c, d,  1, w, msg_pad)
 	ROUND0s(d, e, a, b, c,  2, w, msg_pad)
 	ROUND0s(c, d, e, a, b,  3, w, msg_pad)
@@ -293,56 +295,27 @@ void ZIPStAESCrackerGPU::sha1(const uint8_t* msg,unsigned int len,uint8_t* outpu
     
 }
 
-void ZIPStAESCrackerGPU::hmac_sha1(const uint8_t* msg,unsigned int msgLen, const uint8_t* key,unsigned int keyLen,uint8_t* output){
-    unsigned char *key_pad = new unsigned char[1024+msgLen];
-    memset(key_pad,0x36,64*sizeof(char));
-    for(uint8_t i = 0;i<keyLen; i++){
-        key_pad[i] ^= key[i];
-    }
-    memcpy(key_pad+64,msg,msgLen*sizeof(char));
-    sha1(key_pad,64+msgLen,output);
+void ZIPStAESCrackerGPU::derive_key(const uint8_t* hash, uint8_t key, uint8_t* output){
+   
+    uint8_t key_pad[64];
+    memset(key_pad,key,64);
 
-    memset(key_pad,0x5C,64*sizeof(char));
-    for(uint8_t i = 0;i<keyLen; i++){
-        key_pad[i] ^= key[i];
-    }
-    memcpy(key_pad+64,output,20*sizeof(char));
-    sha1(key_pad,84,output);
-    delete[] key_pad;
+    for(uint8_t i = 0;i<20; i++)
+        key_pad[i] ^= hash[i];
+
+    sha1(key_pad,64,output);
 }
 
-#define ADD_XOR(res, in) \
-        for (int i = 0;i<20;i++) \
-             res[i] ^= in[i];
+void ZIPStAESCrackerGPU::derive(const uint8_t* pass, unsigned int passLen, uint8_t* output){
 
-void ZIPStAESCrackerGPU::pbkdf2_sha1(const uint8_t* pass, unsigned int passLen, const uint8_t* in_salt,unsigned int saltLen, unsigned int iterations, unsigned int dkLen, uint8_t* output){
-    if(saltLen>16)
-        return;
+    uint8_t passHash[20];
+    uint8_t temp[40];
+   
+    ::memset(passHash,0x00,20);
+    sha1(pass,passLen,passHash);
+    derive_key((uint8_t*)passHash, 0x36 , (uint8_t*)temp);
+    derive_key((uint8_t*)passHash, 0x5c, (uint8_t*)(temp+20));
+    
+    memcpy(output, temp, 32); 
 
-    int l = dkLen / 20;
-    int l_rem = dkLen % 20;
-    if (l_rem > 0)
-        l++;
-
-    
-    uint8_t prevU[20];
-    uint8_t Fres[20];
-    uint8_t T[80] = {0};
-    
-    
-    for(int i=1;i<=l;i++){
-        memset(Fres,0,20*sizeof(uint8_t));
-        memcpy(prevU,in_salt,saltLen*sizeof(char));
-        *((unsigned int*)(prevU+saltLen)) = __builtin_bswap32(i);
-        hmac_sha1(prevU,saltLen+4,pass,passLen,prevU);
-        ADD_XOR(Fres,prevU);
-        for(uint32_t c=1;c<iterations;c++){
-            hmac_sha1(prevU,20,pass,passLen,prevU);
-            ADD_XOR(Fres,prevU);
-        }
-        memcpy(T+(i-1)*20,Fres,20*sizeof(uint8_t));
-    }
-    memcpy(output,T,dkLen*sizeof(uint8_t));
-    
-    
 }

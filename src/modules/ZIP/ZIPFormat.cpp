@@ -27,6 +27,7 @@
 #include "ZIPPKCrackerCPU.h"
 #include "ZIPPKCrackerGPU.h"
 #include "ZIPStAESCrackerCPU.h"
+#include "ZIPStAESCrackerGPU.h"
 #include "ZIPTDESCrackerCPU.h"
 
 #include "CrackerFactoryTemplate.tcc"
@@ -41,6 +42,8 @@ typedef CrackerFactoryTemplate<ZIPTDESCrackerCPU,std::vector<ZIPInitData>*> ZIPT
 
 typedef CrackerFactoryTemplate<ZIPPKCrackerGPU,std::vector<ZIPInitData>*, true> ZIPPKCrackerGPUFactory;
 typedef CrackerFactoryTemplate<ZIPAESCrackerGPU,std::vector<ZIPInitData>*, true> ZIPAESCrackerGPUFactory;
+typedef CrackerFactoryTemplate<ZIPStAESCrackerGPU,std::vector<ZIPInitData>*, true> ZIPStAESCrackerGPUFactory;
+
 
 ZIPFormat::ZIPFormat(){
     signature = "PK\x03\x04";
@@ -288,7 +291,7 @@ CrackerFactory* ZIPFormat::getGPUCracker(){
                 return new ZIPPKCrackerGPUFactory(&data);
             }else
                 return NULL;
-        case SAES: return NULL; // new ZIPStAESCrackerGPUFactory(&data);
+        case SAES: return new ZIPStAESCrackerGPUFactory(&data);
         case TDES: return NULL; // new ZIPTDESCrackerGPUFactory(&data);
 	case CDENC: return NULL;
         default: return NULL;
@@ -314,11 +317,13 @@ ZIPInitData::ZIPInitData(const ZIPInitData& orig){
     ::memcpy(this->verifier,orig.verifier,2);
     ::memcpy(this->authCode,orig.authCode,10);
     ::memcpy(this->streamBuffer,orig.streamBuffer,12);
-    this->encData = new uint8_t[orig.encSize];
-    this->erdData = new uint8_t[orig.erdSize];
-    this->ivData = new uint8_t[orig.ivSize];
-    ::memcpy(this->encData, orig.encData, orig.encSize);
-    ::memcpy(this->erdData, orig.erdData, orig.erdSize);
-    ::memcpy(this->ivData, orig.ivData, orig.ivSize);
+    if (orig.type == SAES || orig.type == TDES) {
+	this->encData = new uint8_t[orig.encSize];
+	this->erdData = new uint8_t[orig.erdSize];
+	this->ivData = new uint8_t[orig.ivSize];
+	::memcpy(this->encData, orig.encData, orig.encSize);
+	::memcpy(this->erdData, orig.erdData, orig.erdSize);
+	::memcpy(this->ivData, orig.ivData, orig.ivSize);
+    }
 }
 

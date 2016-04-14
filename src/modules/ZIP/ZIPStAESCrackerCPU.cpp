@@ -67,7 +67,7 @@ CheckResult ZIPStAESCrackerCPU::checkPassword(const std::string* pass) {
     crc = crc << 8 ^ vData[check_data.encSize-2];
     crc = crc << 8 ^ vData[check_data.encSize-3];
     crc = crc << 8 ^ vData[check_data.encSize-4];
-
+   // cout << "crc: " << hex << crc << endl;
     if (crc == crc32(0, vData, check_data.encSize-4)){
         return CR_PASSWORD_MATCH;
     }

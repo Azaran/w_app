@@ -42,7 +42,6 @@ public:
 
     virtual CheckResult checkPassword(const std::string* password);
 
-protected:
     /**
      * Calculate SHA1 hash of message
      * @param msg input to hash

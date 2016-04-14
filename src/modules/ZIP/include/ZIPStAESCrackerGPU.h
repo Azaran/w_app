@@ -24,9 +24,11 @@
 #ifndef ZIPStAESCRACKERGPU_H
 #define	ZIPStAESCRACKERGPU_H
 
+#include "ZIPStAESCrackerCPU.h"
 #include "GPUCracker.h"
 #include "ZIPFormat.h"
 #include <vector>
+#include <iostream>
 
 
 class ZIPStAESCrackerGPU: public GPUCracker {
@@ -39,15 +41,6 @@ public:
     virtual bool verifyPassword(std::string& pass);
 protected:
     /**
-     * Calculate HMAC-SHA1 of message
-     * @param msg input to HMAC
-     * @param msgLen input length
-     * @param key key to auth
-     * @param keyLen key length
-     * @param output result HMAC
-     */
-    void hmac_sha1(const uint8_t* msg,unsigned int msgLen, const uint8_t* key,unsigned int keyLen,uint8_t* output);
-    /**
      * Calculate SHA1 hash of message
      * @param msg input to hash
      * @param len input legth
@@ -55,20 +48,26 @@ protected:
      */
     void sha1(const uint8_t* msg,unsigned int len,uint8_t* output);
     /**
-     * Create key using PBKDF2 method
+     * Similar to Microsoft CryptoDeriveKey()
+     * @param msg input to SHA1
+     * @param msgLen input length
+     * @param output result SHA1 hash
+     */
+    void derive_key(const uint8_t* hash, uint8_t key, uint8_t* output);
+    /**
+     * Similar to Microsoft CryptoDeriveKey()
      * @param pass password
      * @param passLen passwoed length
-     * @param in_salt salt
-     * @param saltLen salt length
-     * @param iterations number of iterations
-     * @param dkLen desired output length
-     * @param output result key
+     * @param output result key (hash)
      */
-    void pbkdf2_sha1(const uint8_t* pass, unsigned int passLen, const uint8_t* in_salt,unsigned int saltLen, unsigned int iterations, unsigned int dkLen, uint8_t* output);
-    ZIPInitData data;
+    void derive(const uint8_t* pass, unsigned int passLen, uint8_t* output);
     
-    cl::Buffer salt_buffer;
-    cl::Buffer verifier_buffer;
+    ZIPStAESCrackerCPU *cpu; 
+    ZIPInitData data;
+
+    cl::Buffer erdData;
+    cl::Buffer encData;
+    cl::Buffer iv;
 };
 
 #endif	/* ZIPStAESCRACKERGPU_H */
