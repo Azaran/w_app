@@ -35,6 +35,7 @@ using namespace std;
 
 SevenZCrackerCPU::SevenZCrackerCPU(SevenZInitData *data):check_data(*data){ 
 
+    
     int coder = 0; 
     for (uint8_t i = 0; i < data->folders[0].coder[coder].propertySize-2; i++)   
 	iv[i] = data->folders[0].coder[coder].property[i+2];
