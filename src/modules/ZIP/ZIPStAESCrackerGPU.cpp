@@ -66,13 +66,13 @@ bool ZIPStAESCrackerGPU::initData() {
     // Dynamic allocation of kernel local memory
     kernel.setArg(userParamIndex+6, cl::__local(cpu->check_data.erdSize));
     kernel.setArg(userParamIndex+7, cl::__local(cpu->check_data.encSize));
-    kernel.setArg(userParamIndex+8, cl::__local(cpu->check_data.erdSize + 32));
+    kernel.setArg(userParamIndex+8, cl::__local(cpu->check_data.erdSize));
     return true;
 }
 
 bool ZIPStAESCrackerGPU::verifyPassword(std::string& pass) {
-     std::cout << std::endl;
-     std::cout << "pass: " << pass << std::endl;
+ //    std::cout << std::endl;
+//     std::cout << "pass: " << pass << std::endl;
      return !cpu->checkPassword(&pass);
 
 }

@@ -23,323 +23,315 @@
 
 #pragma OPENCL EXTENSION cl_amd_printf : enable 
 
-// AES
-typedef local uchar state_t[4][4];
 
-typedef struct 
-{
-    state_t* state;
-    // The number of 32 bit words in a key.
-    uint Nk;
-    uint key_length;
-    uint rounds;
-    uchar RoundKey[240];
+
+/***************************************************************************
+ * This code is based on public domain Szymon Stefanek AES implementation: *
+ * http://www.pragmaware.net/software/rijndael/index.php                   *
+ *                                                                         *
+ * Dynamic tables generation is based on the Brian Gladman work:           *
+ * http://fp.gladman.plus.com/cryptography_technology/rijndael             *
+ ***************************************************************************/
+#define _MAX_KEY_COLUMNS (256/32)
+#define _MAX_ROUNDS      14
+#define MAX_IV_SIZE      16
+
+typedef struct {
+    bool     CBCMode;
+    int      m_uRounds;
+    uchar     m_initVector[MAX_IV_SIZE];
+    uchar     m_expandedKey[_MAX_ROUNDS+1][4][4];
 } aes_context;
 
-#define Nb 4
+static uchar S[256],S5[256],rcon[30];
+static uchar T1[256][4],T2[256][4],T3[256][4],T4[256][4];
+static uchar T5[256][4],T6[256][4],T7[256][4],T8[256][4];
+static uchar U1[256][4],U2[256][4],U3[256][4],U4[256][4];
 
-static constant uchar sbox[256] =   {
-    //0     1    2      3     4    5     6     7      8    9     A      B    C     D     E     F
-    0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
-    0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
-    0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
-    0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75,
-    0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6, 0xb3, 0x29, 0xe3, 0x2f, 0x84,
-    0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb, 0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf,
-    0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x7f, 0x50, 0x3c, 0x9f, 0xa8,
-    0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5, 0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2,
-    0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44, 0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73,
-    0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a, 0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb,
-    0xe0, 0x32, 0x3a, 0x0a, 0x49, 0x06, 0x24, 0x5c, 0xc2, 0xd3, 0xac, 0x62, 0x91, 0x95, 0xe4, 0x79,
-    0xe7, 0xc8, 0x37, 0x6d, 0x8d, 0xd5, 0x4e, 0xa9, 0x6c, 0x56, 0xf4, 0xea, 0x65, 0x7a, 0xae, 0x08,
-    0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a,
-    0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
-    0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
-    0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16 };
+inline void Xor128_2(void *dest,const void *arg1,const void *arg2){
+    #pragma unroll
+    for (int I=0;I<16;I++)
+	((uchar*)dest)[I]=((uchar*)arg1)[I]^((uchar*)arg2)[I];
+}
+inline void Xor128_2_global(void *dest,global void *arg1,const void *arg2){
+    #pragma unroll
+    for (int I=0;I<16;I++)
+	((uchar*)dest)[I]=((global uchar*)arg1)[I]^((uchar*)arg2)[I];
+}
 
-static constant uchar rsbox[256] =
-{ 0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
-    0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
-    0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e,
-    0x08, 0x2e, 0xa1, 0x66, 0x28, 0xd9, 0x24, 0xb2, 0x76, 0x5b, 0xa2, 0x49, 0x6d, 0x8b, 0xd1, 0x25,
-    0x72, 0xf8, 0xf6, 0x64, 0x86, 0x68, 0x98, 0x16, 0xd4, 0xa4, 0x5c, 0xcc, 0x5d, 0x65, 0xb6, 0x92,
-    0x6c, 0x70, 0x48, 0x50, 0xfd, 0xed, 0xb9, 0xda, 0x5e, 0x15, 0x46, 0x57, 0xa7, 0x8d, 0x9d, 0x84,
-    0x90, 0xd8, 0xab, 0x00, 0x8c, 0xbc, 0xd3, 0x0a, 0xf7, 0xe4, 0x58, 0x05, 0xb8, 0xb3, 0x45, 0x06,
-    0xd0, 0x2c, 0x1e, 0x8f, 0xca, 0x3f, 0x0f, 0x02, 0xc1, 0xaf, 0xbd, 0x03, 0x01, 0x13, 0x8a, 0x6b,
-    0x3a, 0x91, 0x11, 0x41, 0x4f, 0x67, 0xdc, 0xea, 0x97, 0xf2, 0xcf, 0xce, 0xf0, 0xb4, 0xe6, 0x73,
-    0x96, 0xac, 0x74, 0x22, 0xe7, 0xad, 0x35, 0x85, 0xe2, 0xf9, 0x37, 0xe8, 0x1c, 0x75, 0xdf, 0x6e,
-    0x47, 0xf1, 0x1a, 0x71, 0x1d, 0x29, 0xc5, 0x89, 0x6f, 0xb7, 0x62, 0x0e, 0xaa, 0x18, 0xbe, 0x1b,
-    0xfc, 0x56, 0x3e, 0x4b, 0xc6, 0xd2, 0x79, 0x20, 0x9a, 0xdb, 0xc0, 0xfe, 0x78, 0xcd, 0x5a, 0xf4,
-    0x1f, 0xdd, 0xa8, 0x33, 0x88, 0x07, 0xc7, 0x31, 0xb1, 0x12, 0x10, 0x59, 0x27, 0x80, 0xec, 0x5f,
-    0x60, 0x51, 0x7f, 0xa9, 0x19, 0xb5, 0x4a, 0x0d, 0x2d, 0xe5, 0x7a, 0x9f, 0x93, 0xc9, 0x9c, 0xef,
-    0xa0, 0xe0, 0x3b, 0x4d, 0xae, 0x2a, 0xf5, 0xb0, 0xc8, 0xeb, 0xbb, 0x3c, 0x83, 0x53, 0x99, 0x61,
-    0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d };
+inline void Xor128_4(uchar *dest,const uchar *arg1,const uchar *arg2,
+	const uchar *arg3,const uchar *arg4){
+    #pragma unroll
+    for (int I=0;I<4;I++)
+	dest[I]=arg1[I]^arg2[I]^arg3[I]^arg4[I];
+}
 
-static constant uchar Rcon[255] = {
-    0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 
-    0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 
-    0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 
-    0x74, 0xe8, 0xcb, 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 
-    0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 
-    0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 
-    0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 
-    0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 
-    0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 
-    0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 
-    0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 
-    0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 
-    0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d, 0x01, 0x02, 0x04, 
-    0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 
-    0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 
-    0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb  };
+inline void Copy128(local uchar *dest, uchar *src){
+    #pragma unroll
+    for (int I=0;I<16;I++)
+	dest[I]=src[I];
+}
+inline void Copy128_global(uchar *dest,global uchar *src){
+    #pragma unroll
+    for (int I=0;I<16;I++)
+	dest[I]=src[I];
+}
 
 
-static inline void aes_init(aes_context* context, uint bits)
+
+  
+void blockDecrypt(aes_context *aes, global uchar *input, uint inputLen, local uchar *outBuffer)
 {
-    if(bits == 128)
+  if (inputLen <= 0)
+    return;
+
+  size_t numBlocks=inputLen/16;
+
+  uchar block[16], iv[4][4];
+  //memcpy(iv,aes->m_initVector,16); 
+  #pragma unroll
+  for(int i = 0; i < 4; i++)
+      for(int j = 0; j < 4; j++)
+	  iv[i][j] = aes->m_initVector[i*4+j];
+
+  for (size_t i = numBlocks; i > 0; i--)
+  {
+    uchar temp[4][4];
+    
+    Xor128_2_global(temp,input,aes->m_expandedKey[aes->m_uRounds]);
+
+    Xor128_4(block,   T5[temp[0][0]],T6[temp[3][1]],T7[temp[2][2]],T8[temp[1][3]]);
+    Xor128_4(block+4, T5[temp[1][0]],T6[temp[0][1]],T7[temp[3][2]],T8[temp[2][3]]);
+    Xor128_4(block+8, T5[temp[2][0]],T6[temp[1][1]],T7[temp[0][2]],T8[temp[3][3]]);
+    Xor128_4(block+12,T5[temp[3][0]],T6[temp[2][1]],T7[temp[1][2]],T8[temp[0][3]]);
+
+    for(int r = aes->m_uRounds-1; r > 1; r--)
     {
-	context->key_length = 16;
-	context->rounds = 10;
-	context->Nk = 4;
+      Xor128_2(temp,block,aes->m_expandedKey[r]);
+      Xor128_4(block,   T5[temp[0][0]],T6[temp[3][1]],T7[temp[2][2]],T8[temp[1][3]]);
+      Xor128_4(block+4, T5[temp[1][0]],T6[temp[0][1]],T7[temp[3][2]],T8[temp[2][3]]);
+      Xor128_4(block+8, T5[temp[2][0]],T6[temp[1][1]],T7[temp[0][2]],T8[temp[3][3]]);
+      Xor128_4(block+12,T5[temp[3][0]],T6[temp[2][1]],T7[temp[1][2]],T8[temp[0][3]]);
     }
-    else if (bits == 192)
+   
+    Xor128_2(temp,block,aes->m_expandedKey[1]);
+    block[ 0] = S5[temp[0][0]];
+    block[ 1] = S5[temp[3][1]];
+    block[ 2] = S5[temp[2][2]];
+    block[ 3] = S5[temp[1][3]];
+    block[ 4] = S5[temp[1][0]];
+    block[ 5] = S5[temp[0][1]];
+    block[ 6] = S5[temp[3][2]];
+    block[ 7] = S5[temp[2][3]];
+    block[ 8] = S5[temp[2][0]];
+    block[ 9] = S5[temp[1][1]];
+    block[10] = S5[temp[0][2]];
+    block[11] = S5[temp[3][3]];
+    block[12] = S5[temp[3][0]];
+    block[13] = S5[temp[2][1]];
+    block[14] = S5[temp[1][2]];
+    block[15] = S5[temp[0][3]];
+    Xor128_2(block,block,aes->m_expandedKey[0]);
+
+    if (aes->CBCMode)
+      Xor128_2(block,block,iv);
+
+    Copy128_global((uchar*)iv,input);
+    Copy128(outBuffer,block);
+
+    input += 16;
+    outBuffer += 16;
+  }
+
+//  memcpy(aes->m_initVector,iv,16);
+  #pragma unroll
+  for(int i = 0; i < 16; i++)
+    aes->m_initVector[i] = (*iv)[i];
+
+}
+
+void keySched(aes_context *aes,uchar key[_MAX_KEY_COLUMNS][4])
+{
+  int j,rconpointer = 0;
+
+  // Calculate the necessary round keys
+  // The number of calculations depends on keyBits and blockBits
+  int uKeyColumns = aes->m_uRounds - 6;
+
+  uchar tempKey[_MAX_KEY_COLUMNS][4];
+
+  // Copy the input key to the temporary key matrix
+
+//  memcpy(tempKey,key,sizeof(tempKey));
+  #pragma unroll
+  for(int i = 0; i < _MAX_KEY_COLUMNS; i++)
+      #pragma unroll
+      for(int j = 0; j < 4; j++)
+	  tempKey[i][j] = key[i][j];
+
+  int r = 0;
+  int t = 0;
+
+  // copy values into round key array
+  for(j = 0;(j < uKeyColumns) && (r <= aes->m_uRounds); )
+  {
+    for(;(j < uKeyColumns) && (t < 4); j++, t++)
+      for (int k=0;k<4;k++)
+        aes->m_expandedKey[r][t][k]=tempKey[j][k];
+
+    if(t == 4)
     {
-	context->key_length = 24;
-	context->rounds = 12;
-	context->Nk = 6;
+      r++;
+      t = 0;
     }
+  }
+    
+  while(r <= aes->m_uRounds)
+  {
+    tempKey[0][0] ^= S[tempKey[uKeyColumns-1][1]];
+    tempKey[0][1] ^= S[tempKey[uKeyColumns-1][2]];
+    tempKey[0][2] ^= S[tempKey[uKeyColumns-1][3]];
+    tempKey[0][3] ^= S[tempKey[uKeyColumns-1][0]];
+    tempKey[0][0] ^= rcon[rconpointer++];
+
+    if (uKeyColumns != 8)
+      for(j = 1; j < uKeyColumns; j++)
+        for (int k=0;k<4;k++)
+          tempKey[j][k] ^= tempKey[j-1][k];
     else
     {
-	context->key_length = 32;
-	context->rounds = 14;
-	context->Nk = 8;
+      for(j = 1; j < uKeyColumns/2; j++)
+        for (int k=0;k<4;k++)
+          tempKey[j][k] ^= tempKey[j-1][k];
+
+      tempKey[uKeyColumns/2][0] ^= S[tempKey[uKeyColumns/2 - 1][0]];
+      tempKey[uKeyColumns/2][1] ^= S[tempKey[uKeyColumns/2 - 1][1]];
+      tempKey[uKeyColumns/2][2] ^= S[tempKey[uKeyColumns/2 - 1][2]];
+      tempKey[uKeyColumns/2][3] ^= S[tempKey[uKeyColumns/2 - 1][3]];
+      for(j = uKeyColumns/2 + 1; j < uKeyColumns; j++)
+        for (int k=0;k<4;k++)
+          tempKey[j][k] ^= tempKey[j-1][k];
     }
-}
-static uchar getSBoxValue(uchar num)
-{
-    return sbox[num];
-}
-
-static uchar getSBoxInvert(uchar num)
-{
-    return rsbox[num];
-}
-
-static void KeyExpansion(aes_context* context, const uchar* Key)
-{
-    uint i, j, k;
-    uchar tempa[4]; // Used for the column/row operations
-
-    // The first round key is the key itself.
-    for(i = 0; i < context->Nk; ++i)
+    for(j = 0; (j < uKeyColumns) && (r <= aes->m_uRounds); )
     {
-	context->RoundKey[(i * 4) + 0] = Key[(i * 4) + 0];
-	context->RoundKey[(i * 4) + 1] = Key[(i * 4) + 1];
-	context->RoundKey[(i * 4) + 2] = Key[(i * 4) + 2];
-	context->RoundKey[(i * 4) + 3] = Key[(i * 4) + 3];
+      for(; (j < uKeyColumns) && (t < 4); j++, t++)
+        for (int k=0;k<4;k++)
+          aes->m_expandedKey[r][t][k] = tempKey[j][k];
+      if(t == 4)
+      {
+        r++;
+        t = 0;
+      }
     }
-
-    // All other round keys are found from the previous round keys.
-    for(; (i < (Nb * (context->rounds + 1))); ++i)
-    {
-	for(j = 0; j < 4; ++j)
-	{
-	    tempa[j]=context->RoundKey[(i-1) * 4 + j];
-	}
-	if (i % context->Nk == 0)
-	{
-	    // This function rotates the 4 bytes in a word to the left once.
-	    // [a0,a1,a2,a3] becomes [a1,a2,a3,a0]
-
-	    // Function RotWord()
-	    {
-		k = tempa[0];
-		tempa[0] = tempa[1];
-		tempa[1] = tempa[2];
-		tempa[2] = tempa[3];
-		tempa[3] = k;
-	    }
-
-	    // SubWord() is a function that takes a four-byte input word and 
-	    // applies the S-box to each of the four bytes to produce an output word.
-
-	    // Function Subword()
-	    {
-		tempa[0] = getSBoxValue(tempa[0]);
-		tempa[1] = getSBoxValue(tempa[1]);
-		tempa[2] = getSBoxValue(tempa[2]);
-		tempa[3] = getSBoxValue(tempa[3]);
-	    }
-
-	    tempa[0] =  tempa[0] ^ Rcon[i/context->Nk];
-	}
-	else if (context->Nk > 6 && i % context->Nk == 4)
-	{
-	    // Function Subword()
-	    {
-		tempa[0] = getSBoxValue(tempa[0]);
-		tempa[1] = getSBoxValue(tempa[1]);
-		tempa[2] = getSBoxValue(tempa[2]);
-		tempa[3] = getSBoxValue(tempa[3]);
-	    }
-	}
-	context->RoundKey[i * 4 + 0] = context->RoundKey[(i - context->Nk) * 4 + 0] ^ tempa[0];
-	context->RoundKey[i * 4 + 1] = context->RoundKey[(i - context->Nk) * 4 + 1] ^ tempa[1];
-	context->RoundKey[i * 4 + 2] = context->RoundKey[(i - context->Nk) * 4 + 2] ^ tempa[2];
-	context->RoundKey[i * 4 + 3] = context->RoundKey[(i - context->Nk) * 4 + 3] ^ tempa[3];
-    }
+  }   
 }
-static void BlockCopy(local uchar* output, global uchar* input, uint key_length)
+
+void keyEncToDec(aes_context *aes)
 {
-    uint i;
-    for (i=0;i<key_length;++i)
-    {
-	output[i] = input[i];
-    }
-}
+  for(int r = 1; r < aes->m_uRounds; r++)
+  {
+    uchar n_expandedKey[4][4];
+    for (int i = 0; i < 4; i++)
+      for (int j = 0; j < 4; j++)
+      {
+        uchar *w=aes->m_expandedKey[r][j];
+        n_expandedKey[j][i]=U1[w[0]][i]^U2[w[1]][i]^U3[w[2]][i]^U4[w[3]][i];
+      }
+ //   memcpy(aes->m_expandedKey[r],n_expandedKey,sizeof(aes->m_expandedKey[0]));
+    #pragma unroll
+    for(int i = 0; i < 4; i++)
+	#pragma unroll
+	for(int j = 0; j < 4; j++)
+	    aes->m_expandedKey[r][j][i] = n_expandedKey[j][i];
+  }
+} 
 
-static void AddRoundKey(aes_context* context, uchar round)
+
+#define ff_poly 0x011b
+#define ff_hi   0x80
+
+#define FFinv(x)    ((x) ? pow[255 - log[x]]: 0)
+
+#define FFmul02(x) (x ? pow[log[x] + 0x19] : 0)
+#define FFmul03(x) (x ? pow[log[x] + 0x01] : 0)
+#define FFmul09(x) (x ? pow[log[x] + 0xc7] : 0)
+#define FFmul0b(x) (x ? pow[log[x] + 0x68] : 0)
+#define FFmul0d(x) (x ? pow[log[x] + 0xee] : 0)
+#define FFmul0e(x) (x ? pow[log[x] + 0xdf] : 0)
+#define fwd_affine(x) \
+    (w = (uint)x, w ^= (w<<1)^(w<<2)^(w<<3)^(w<<4), (uchar)(0x63^(w^(w>>8))))
+
+#define inv_affine(x) \
+    (w = (uint)x, w = (w<<1)^(w<<3)^(w<<6), (uchar)(0x05^(w^(w>>8))))
+
+void GenerateTables()
 {
-    uchar i,j;
-    for(i=0;i<4;++i)
-    {
-	for(j = 0; j < 4; ++j)
-	{
-	    (*(context->state))[i][j] ^= context->RoundKey[round * Nb * 4 + i * Nb + j];
-	}
-    }
+  uchar pow[512],log[256];
+  int i = 0, w = 1; 
+  do
+  {   
+    pow[i] = (uchar)w;
+    pow[i + 255] = (uchar)w;
+    log[w] = (uchar)i++;
+    w ^=  (w << 1) ^ (w & ff_hi ? ff_poly : 0);
+  } while (w != 1);
+ 
+  for (int i = 0,w = 1; i < sizeof(rcon)/sizeof(rcon[0]); i++)
+  {
+    rcon[i] = w;
+    w = (w << 1) ^ (w & ff_hi ? ff_poly : 0);
+  }
+  for(int i = 0; i < 256; ++i)
+  {   
+    uchar b=S[i]=fwd_affine(FFinv((uchar)i));
+    T1[i][1]=T1[i][2]=T2[i][2]=T2[i][3]=T3[i][0]=T3[i][3]=T4[i][0]=T4[i][1]=b;
+    T1[i][0]=T2[i][1]=T3[i][2]=T4[i][3]=FFmul02(b);
+    T1[i][3]=T2[i][0]=T3[i][1]=T4[i][2]=FFmul03(b);
+    S5[i] = b = FFinv(inv_affine((uchar)i));
+    U1[b][3]=U2[b][0]=U3[b][1]=U4[b][2]=T5[i][3]=T6[i][0]=T7[i][1]=T8[i][2]=FFmul0b(b);
+    U1[b][1]=U2[b][2]=U3[b][3]=U4[b][0]=T5[i][1]=T6[i][2]=T7[i][3]=T8[i][0]=FFmul09(b);
+    U1[b][2]=U2[b][3]=U3[b][0]=U4[b][1]=T5[i][2]=T6[i][3]=T7[i][0]=T8[i][1]=FFmul0d(b);
+    U1[b][0]=U2[b][1]=U3[b][2]=U4[b][3]=T5[i][0]=T6[i][1]=T7[i][2]=T8[i][3]=FFmul0e(b);
+  }
 }
+void Init(aes_context *aes, const uchar *key,uint keyLen, constant uchar * initVector){
 
+  aes->CBCMode = true;
+  GenerateTables();
+  uint uKeyLenInuchars;
+  switch(keyLen)
+  {
+    case 128:
+      uKeyLenInuchars = 16;
+      aes->m_uRounds = 10;
+      break;
+    case 192:
+      uKeyLenInuchars = 24;
+      aes->m_uRounds = 12;
+      break;
+    case 256:
+      uKeyLenInuchars = 32;
+      aes->m_uRounds = 14;
+      break;
+  }
 
+  uchar keyMatrix[_MAX_KEY_COLUMNS][4];
+//  memset(aes->m_expandedKey, 0, 15*4*4);
+  #pragma unroll
+  for(int i = 0; i < 15*4*4; i++)
+    aes->m_initVector[i] =0 ;
+  for(uint i = 0; i < uKeyLenInuchars; i++)
+    keyMatrix[i >> 2][i & 3] = key[i]; 
 
-static uchar xtime(uchar x)
-{
-    return ((x<<1) ^ (((x>>7) & 1) * 0x1b));
+//    memset(aes->m_initVector, 0, sizeof(aes->m_initVector));
+  #pragma unroll
+  for(int i = 0; i < MAX_IV_SIZE; i++)
+      aes->m_initVector[i] = initVector[i];
+
+  keySched(aes,keyMatrix);
+
+  keyEncToDec(aes);
 }
-
-#define Multiply(x, y)                                \
-    (  ((y & 1) * x) ^                              \
-       ((y>>1 & 1) * xtime(x)) ^                       \
-       ((y>>2 & 1) * xtime(xtime(x))) ^                \
-       ((y>>3 & 1) * xtime(xtime(xtime(x)))) ^         \
-       ((y>>4 & 1) * xtime(xtime(xtime(xtime(x))))))   
-
-static void InvMixColumns(state_t* state)
-{
-    uint i;
-    uchar a,b,c,d;
-    for(i=0;i<4;++i)
-    { 
-	a = (*state)[i][0];
-	b = (*state)[i][1];
-	c = (*state)[i][2];
-	d = (*state)[i][3];
-
-	(*state)[i][0] = Multiply(a, 0x0e) ^ Multiply(b, 0x0b) ^ Multiply(c, 0x0d) ^ Multiply(d, 0x09);
-	(*state)[i][1] = Multiply(a, 0x09) ^ Multiply(b, 0x0e) ^ Multiply(c, 0x0b) ^ Multiply(d, 0x0d);
-	(*state)[i][2] = Multiply(a, 0x0d) ^ Multiply(b, 0x09) ^ Multiply(c, 0x0e) ^ Multiply(d, 0x0b);
-	(*state)[i][3] = Multiply(a, 0x0b) ^ Multiply(b, 0x0d) ^ Multiply(c, 0x09) ^ Multiply(d, 0x0e);
-    }
-}
-
-static void InvSubBytes(state_t* state)
-{
-    uchar i,j;
-    for(i=0;i<4;++i)
-    {
-	for(j=0;j<4;++j)
-	{
-	    (*state)[j][i] = getSBoxInvert((*state)[j][i]);
-	}
-    }
-}
-
-static void InvShiftRows(state_t* state)
-{
-    uchar temp;
-
-    // Rotate first row 1 columns to right  
-    temp=(*state)[3][1];
-    (*state)[3][1]=(*state)[2][1];
-    (*state)[2][1]=(*state)[1][1];
-    (*state)[1][1]=(*state)[0][1];
-    (*state)[0][1]=temp;
-
-    // Rotate second row 2 columns to right 
-    temp=(*state)[0][2];
-    (*state)[0][2]=(*state)[2][2];
-    (*state)[2][2]=temp;
-
-    temp=(*state)[1][2];
-    (*state)[1][2]=(*state)[3][2];
-    (*state)[3][2]=temp;
-
-    // Rotate third row 3 columns to right
-    temp=(*state)[0][3];
-    (*state)[0][3]=(*state)[1][3];
-    (*state)[1][3]=(*state)[2][3];
-    (*state)[2][3]=(*state)[3][3];
-    (*state)[3][3]=temp;
-}
-
-static void InvCipher(aes_context* context)
-{
-    uchar round=0;
-
-    // Add the First round key to the state before starting the rounds.
-    AddRoundKey(context,context->rounds); 
-
-    // There will be Nr rounds.
-    // The first Nr-1 rounds are identical.
-    // These Nr-1 rounds are executed in the loop below.
-    for(round=context->rounds-1;round>0;round--)
-    {
-	InvShiftRows(context->state);
-	InvSubBytes(context->state);
-	AddRoundKey(context,round);
-	InvMixColumns(context->state);
-    }
-
-    // The last round is given below.
-    // The MixColumns function is not here in the last round.
-    InvShiftRows(context->state);
-    InvSubBytes(context->state);
-    AddRoundKey(context,0);
-}
-
-void aes_decrypt_buffer(aes_context* context, local uchar* output, global uchar* input, ushort len, uchar* key, constant uchar* iv)
-{
-    ushort remainders = len % 16; /* Remaining bytes in the last non-full block */
-
-    BlockCopy(output, input, 16);
-    context->state = (state_t*)output;
-
-    KeyExpansion(context,key);
-    
-    ushort i;
-    for(i = 0; i < len; i += 16)
-    {
-	BlockCopy(output, input, 16);
-	context->state = (state_t*)output;
-	InvCipher(context);
-	// Xor output with IV
-	for(int j = 0; j < 16; ++j)
-	    output[j] ^= iv[j];
-	input += 16;
-	output += 16;
-    }
-
-    if(remainders > 0)
-    {
-	BlockCopy(output, input, 16);
-	//memset(output+remainders, 0, KEYLEN - remainders); 
-	for(i = 0; i < 16 - remainders; ++i)
-	    output[remainders+i] = 0;
-	context->state = (state_t*)output;
-	InvCipher(context);
-    }
-}
-
 
 #define ROL(x,c) rotate((uint)x,(uint)c)
 
@@ -379,45 +371,78 @@ void aes_decrypt_buffer(aes_context* context, local uchar* output, global uchar*
         SCHEDULE(i, w) \
         ROUNDTAIL(a, b, e, F4(b, c, d), i, 0xCA62C1D6, w)
 
-void inline sha1(const uchar* msg, unsigned int len, uchar* output){
-    unsigned int h0 = 0x67452301;
-    unsigned int h1 = 0xEFCDAB89;
-    unsigned int h2 = 0x98BADCFE;
-    unsigned int h3 = 0x10325476;
-    unsigned int h4 = 0xC3D2E1F0;
+void inline sha1(const uchar* msg, uint len, uchar* output){
+    uint h0 = 0x67452301;
+    uint h1 = 0xEFCDAB89;
+    uint h2 = 0x98BADCFE;
+    uint h3 = 0x10325476;
+    uint h4 = 0xC3D2E1F0;
     
-    unsigned int chunks = ((len+9)/64)+1;
+    uint chunks = ((len+9)/64)+1;
+    uint padSpace = 64-(len%64);
+    uint padInChunk;
+    bool longPad;
     
-    unsigned char msg_pad_space[2*64] = {0};
-    unsigned char *msg_pad = msg_pad_space;
-    unsigned int w[80];
+    uchar msg_pad[64];
+    uint w[80] = {0};
     
-    unsigned char pos = 62;
-    
-    if(len > 2*64-9){
-        return;
+    if(padSpace < 9){
+        padInChunk = chunks-2;
+        longPad = true;
+    }else{
+        padInChunk = chunks-1;
+        longPad = false;
     }
-    for(int i = 0;i<len;i++)
-        msg_pad[i] = msg[i];
-    msg_pad[len] = 0x80;
-    if(len > 54)
-        pos = 126;
-
     
-    unsigned long bit_len = len*8;
-    msg_pad[pos++] = (bit_len >> 8) & 0xFF;
-    msg_pad[pos] = bit_len & 0xFF;
-    
-    for(int chunk = 0;chunk<chunks;chunk++){
-
-        unsigned int a = h0;
-        unsigned int b = h1;
-        unsigned int c = h2;
-        unsigned int d = h3;
-        unsigned int e = h4;
+    for(uint chunk = 0;chunk<chunks;chunk++){
+        
+        if(chunk < padInChunk){
+	    // ::memcpy(msg_pad,msg+chunk*64,64);
+	    #pragma unroll
+	    for (int i = 0; i < 64; i++)
+		msg_pad[i]= (msg+chunk*64)[i];
+        }else if(chunk == padInChunk){
+            uint padStart = len%64;
+            //memcpy(msg_pad,msg+chunk*64,padStart);
+	    #pragma unroll
+	    for (int i = 0; i < padStart; i++)
+		msg_pad[i]= (msg+chunk*64)[i];
+            msg_pad[padStart] = 0x80;
+            if(longPad){
+                // pad in last two chunks
+                for(uint i = padStart+1;i<64;i++){
+                    msg_pad[i] = 0;
+                }
+            }else{
+                // pad in last chunk
+                for(uint i = padStart+1;i<64-4;i++){
+                    msg_pad[i] = 0;
+                }
+                ulong bit_len = len*8;
+                msg_pad[60] = (bit_len >> 24) & 0xFF;
+                msg_pad[61] = (bit_len >> 16) & 0xFF;
+                msg_pad[62] = (bit_len >> 8) & 0xFF;
+                msg_pad[63] = bit_len & 0xFF;
+            }
+        }else{
+            for(uint i = 0;i<64-4;i++){
+                    msg_pad[i] = 0;
+            }
+            ulong bit_len = len*8;
+            msg_pad[60] = (bit_len >> 24) & 0xFF;
+            msg_pad[61] = (bit_len >> 16) & 0xFF;
+            msg_pad[62] = (bit_len >> 8) & 0xFF;
+            msg_pad[63] = bit_len & 0xFF;
+        }
+        
+        uint a = h0;
+        uint b = h1;
+        uint c = h2;
+        uint d = h3;
+        uint e = h4;
 
         
-    ROUND0s(a, b, c, d, e,  0, w, msg_pad)
+	ROUND0s(a, b, c, d, e,  0, w, msg_pad)
 	ROUND0s(e, a, b, c, d,  1, w, msg_pad)
 	ROUND0s(d, e, a, b, c,  2, w, msg_pad)
 	ROUND0s(c, d, e, a, b,  3, w, msg_pad)
@@ -503,8 +528,8 @@ void inline sha1(const uchar* msg, unsigned int len, uchar* output){
         h2 += c;
         h3 += d;
         h4 += e;
-        msg_pad += 64;
     }
+    
     output[0] = h0 >> 24;
     output[1] = (h0 >> 16) & 0xFF;
     output[2] = (h0 >> 8) & 0xFF;
@@ -530,47 +555,82 @@ void inline sha1(const uchar* msg, unsigned int len, uchar* output){
     output[18] = (h4 >> 8) & 0xFF;
     output[19] = h4 & 0xFF;
     
+    
 }
 
-void inline sha1_loc(const local uchar* msg, unsigned int len, uchar* output){
-    unsigned int h0 = 0x67452301;
-    unsigned int h1 = 0xEFCDAB89;
-    unsigned int h2 = 0x98BADCFE;
-    unsigned int h3 = 0x10325476;
-    unsigned int h4 = 0xC3D2E1F0;
+void inline sha1_loc(const local uchar* msg, uint len, uchar* output){
     
-    unsigned int chunks = ((len+9)/64)+1;
+    uint h0 = 0x67452301;
+    uint h1 = 0xEFCDAB89;
+    uint h2 = 0x98BADCFE;
+    uint h3 = 0x10325476;
+    uint h4 = 0xC3D2E1F0;
     
-    unsigned char msg_pad_space[2*64] = {0};
-    unsigned char *msg_pad = msg_pad_space;
-    unsigned int w[80];
+    uint chunks = ((len+9)/64)+1;
+    uint padSpace = 64-(len%64);
+    uint padInChunk;
+    bool longPad;
     
-    unsigned char pos = 62;
+    uchar msg_pad[64];
+    uint w[80] = {0};
     
-    if(len > 2*64-9){
-        return;
+    if(padSpace < 9){
+        padInChunk = chunks-2;
+        longPad = true;
+    }else{
+        padInChunk = chunks-1;
+        longPad = false;
     }
-    for(int i = 0;i<len;i++)
-        msg_pad[i] = msg[i];
-    msg_pad[len] = 0x80;
-    if(len > 54)
-        pos = 126;
-
     
-    unsigned long bit_len = len*8;
-    msg_pad[pos++] = (bit_len >> 8) & 0xFF;
-    msg_pad[pos] = bit_len & 0xFF;
-    
-    for(int chunk = 0;chunk<chunks;chunk++){
-
-        unsigned int a = h0;
-        unsigned int b = h1;
-        unsigned int c = h2;
-        unsigned int d = h3;
-        unsigned int e = h4;
+    for(uint chunk = 0;chunk<chunks;chunk++){
+        
+        if(chunk < padInChunk){
+	    // ::memcpy(msg_pad,msg+chunk*64,64);
+	    #pragma unroll
+	    for (int i = 0; i < 64; i++)
+		msg_pad[i]= (msg+chunk*64)[i];
+        }else if(chunk == padInChunk){
+            uint padStart = len%64;
+            //memcpy(msg_pad,msg+chunk*64,padStart);
+	    #pragma unroll
+	    for (int i= 0; i < padStart; i++)
+		msg_pad[i]= (msg+chunk*64)[i];
+            msg_pad[padStart] = 0x80;
+            if(longPad){
+                // pad in last two chunks
+                for(uint i = padStart+1;i<64;i++){
+                    msg_pad[i] = 0;
+                }
+            }else{
+                // pad in last chunk
+                for(uint i = padStart+1;i<64-4;i++){
+                    msg_pad[i] = 0;
+                }
+                ulong bit_len = len*8;
+                msg_pad[60] = (bit_len >> 24) & 0xFF;
+                msg_pad[61] = (bit_len >> 16) & 0xFF;
+                msg_pad[62] = (bit_len >> 8) & 0xFF;
+                msg_pad[63] = bit_len & 0xFF;
+            }
+        }else{
+            for(uint i = 0;i<64-4;i++){
+                    msg_pad[i] = 0;
+            }
+            ulong bit_len = len*8;
+            msg_pad[60] = (bit_len >> 24) & 0xFF;
+            msg_pad[61] = (bit_len >> 16) & 0xFF;
+            msg_pad[62] = (bit_len >> 8) & 0xFF;
+            msg_pad[63] = bit_len & 0xFF;
+        }
+        
+        uint a = h0;
+        uint b = h1;
+        uint c = h2;
+        uint d = h3;
+        uint e = h4;
 
         
-    ROUND0s(a, b, c, d, e,  0, w, msg_pad)
+	ROUND0s(a, b, c, d, e,  0, w, msg_pad)
 	ROUND0s(e, a, b, c, d,  1, w, msg_pad)
 	ROUND0s(d, e, a, b, c,  2, w, msg_pad)
 	ROUND0s(c, d, e, a, b,  3, w, msg_pad)
@@ -656,8 +716,8 @@ void inline sha1_loc(const local uchar* msg, unsigned int len, uchar* output){
         h2 += c;
         h3 += d;
         h4 += e;
-        msg_pad += 64;
     }
+    
     output[0] = h0 >> 24;
     output[1] = (h0 >> 16) & 0xFF;
     output[2] = (h0 >> 8) & 0xFF;
@@ -698,7 +758,7 @@ void derive_key(const uchar* hash, uchar key, uchar* output){
     sha1(key_pad,64,output);
 }
 
-void derive(const local uchar* pass, unsigned int passLen, uchar* output){
+void derive(const local uchar* pass, uint passLen, uchar* output){
 
     uchar passHash[20];
     uchar temp[40];
@@ -790,17 +850,18 @@ kernel void zip_staes_kernel( \
     int id = get_global_id(0);
     uchar my_pass_len = passwords[id*pass_len];
     local uchar pass_buffer[32];
+    uchar pb[32];
     uchar key[32];
-    ushort size = encSize;
     for(int i = 0;i<my_pass_len;i++){
         pass_buffer[i] = passwords[id*pass_len+1+i];
+	pb[i] = passwords[id*pass_len+1+i];
     }
 
     derive(pass_buffer, my_pass_len, key);
     aes_context aes; 
-    aes_init(&aes, (uint)passlen);
+    Init(&aes, key, passlen, iv);
 
-    aes_decrypt_buffer(&aes, rdData, erdData, erdSize, key, iv);
+    blockDecrypt(&aes, erdData, erdSize, rdData);
     
     #pragma unroll
     for (int i=0; i<16; i++)
@@ -812,18 +873,19 @@ kernel void zip_staes_kernel( \
 
     derive(tempKey, erdSize, key);   
     
-    aes_init(&aes, (uint) passlen);
+    Init(&aes, key, passlen, iv);
 
-    aes_decrypt_buffer(&aes, vData, encData, size, key, iv);
+    blockDecrypt(&aes, encData, encSize, vData);
+    
     uint crc = 0;
 
-    crc = crc ^ vData[size-1];
-    crc = crc << 8 ^ vData[size-2];
-    crc = crc << 8 ^ vData[size-3];
-    crc = crc << 8 ^ vData[size-4];
+    crc = crc ^ vData[encSize-1];
+    crc = crc << 8 ^ vData[encSize-2];
+    crc = crc << 8 ^ vData[encSize-3];
+    crc = crc << 8 ^ vData[encSize-4];
     
-    uint crc3 = crc32(0, vData, size-4); 
-    if (crc == crc32(0, vData, size-4)){
+    uint crc3 = crc32(0, vData, encSize-4); 
+    if (crc != crc3){
         return;
     }
     
