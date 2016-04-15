@@ -55,6 +55,7 @@ bool ZIPStAESCrackerGPU::initData() {
     que.enqueueWriteBuffer(encData, CL_TRUE, 0,\
 	    cpu->check_data.encSize, cpu->check_data.encData);
     que.enqueueWriteBuffer(iv, CL_TRUE, 0, 16, cpu->check_data.ivData);
+    printf("GWS: %d", deviceConfig.globalWorkSize);
    
     kernel.setArg(userParamIndex, erdData);
     kernel.setArg(userParamIndex+1, encData);
@@ -64,9 +65,8 @@ bool ZIPStAESCrackerGPU::initData() {
     kernel.setArg(userParamIndex+5, cpu->check_data.encSize);
 
     // Dynamic allocation of kernel local memory
-    kernel.setArg(userParamIndex+6, cl::__local(cpu->check_data.erdSize));
-    kernel.setArg(userParamIndex+7, cl::__local(cpu->check_data.encSize));
-    kernel.setArg(userParamIndex+8, cl::__local(cpu->check_data.erdSize));
+//    kernel.setArg(userParamIndex+6, cl::__local(deviceConfig.globalWorkSize*cpu->check_data.erdSize));
+//    kernel.setArg(userParamIndex+7, deviceConfig.globalWorkSize*cpu->check_data.encSize, NULL);
     return true;
 }
 

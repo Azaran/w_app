@@ -36,7 +36,7 @@ ZIPStAESCrackerCPU::ZIPStAESCrackerCPU(std::vector<ZIPInitData> *data):data(data
         }
     }
     rdData = new uint8_t [check_data.erdSize];
-    tempKey = new uint8_t [check_data.ivSize + check_data.erdSize];
+    tempKey = new uint8_t [check_data.erdSize];
     vData = new uint8_t [check_data.encSize];
 	
 }
@@ -58,7 +58,7 @@ CheckResult ZIPStAESCrackerCPU::checkPassword(const std::string* pass) {
     memcpy(tempKey, check_data.ivData, check_data.ivSize);
     memcpy(tempKey+check_data.ivSize, rdData, check_data.erdSize-16);
 
-    derive(tempKey, check_data.ivSize+check_data.erdSize-16, key);   
+    derive(tempKey, check_data.erdSize, key);   
 
     aes.Init(false, key, check_data.keyLength, check_data.ivData);
     aes.blockDecrypt(check_data.encData, check_data.encSize, vData);
@@ -68,7 +68,8 @@ CheckResult ZIPStAESCrackerCPU::checkPassword(const std::string* pass) {
     crc = crc << 8 ^ vData[check_data.encSize-3];
     crc = crc << 8 ^ vData[check_data.encSize-4];
    // cout << "crc: " << hex << crc << endl;
-    if (crc == crc32(0, vData, check_data.encSize-4)){
+    uint32_t crc3 = crc32(0, vData, check_data.encSize-4);
+    if (crc == crc3){
         return CR_PASSWORD_MATCH;
     }
     

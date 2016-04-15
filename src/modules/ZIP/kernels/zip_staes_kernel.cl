@@ -66,7 +66,7 @@ inline void Xor128_4(uchar *dest,const uchar *arg1,const uchar *arg2,
 	dest[I]=arg1[I]^arg2[I]^arg3[I]^arg4[I];
 }
 
-inline void Copy128(local uchar *dest, uchar *src){
+inline void Copy128(uchar *dest, uchar *src){
     #pragma unroll
     for (int I=0;I<16;I++)
 	dest[I]=src[I];
@@ -80,7 +80,7 @@ inline void Copy128_global(uchar *dest,global uchar *src){
 
 
   
-void blockDecrypt(aes_context *aes, global uchar *input, uint inputLen, local uchar *outBuffer)
+void blockDecrypt(aes_context *aes, global uchar *input, uint inputLen, uchar *outBuffer)
 {
   if (inputLen <= 0)
     return;
@@ -558,7 +558,7 @@ void inline sha1(const uchar* msg, uint len, uchar* output){
     
 }
 
-void inline sha1_loc(const local uchar* msg, uint len, uchar* output){
+void inline sha1_loc(const global uchar* msg, uint len, uchar* output){
     
     uint h0 = 0x67452301;
     uint h1 = 0xEFCDAB89;
@@ -758,7 +758,7 @@ void derive_key(const uchar* hash, uchar key, uchar* output){
     sha1(key_pad,64,output);
 }
 
-void derive(const local uchar* pass, uint passLen, uchar* output){
+void derive(const uchar* pass, uint klen, uchar* output){
 
     uchar passHash[20];
     uchar temp[40];
@@ -767,7 +767,7 @@ void derive(const local uchar* pass, uint passLen, uchar* output){
     for (int i=0; i < 20; i++)
 	passHash[i] = 0x00;
     
-    sha1_loc(pass,passLen,passHash);
+    sha1(pass,klen,passHash);
     derive_key((uchar*)passHash, 0x36 , (uchar*)temp);
     derive_key((uchar*)passHash, 0x5c, (uchar*)(temp+20));
     
@@ -822,9 +822,9 @@ static uint crc32_tab[] = {
     0x54de5729, 0x23d967bf, 0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94,
     0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
 };
-uint crc32(uint crc, local uchar *buf, uchar size)
+uint crc32(uint crc, uchar *buf, uchar size)
 {
-    const local uchar *p;
+    const uchar *p;
     p = buf;
     crc = crc ^ ~0U;
     while (size--)
@@ -840,26 +840,26 @@ kernel void zip_staes_kernel( \
 	global uchar* erdData,\
 	global uchar* encData,\
 	constant uchar* iv,\
-	ushort passlen,\
+	ushort klen,\
 	ushort erdSize,\
-	ushort encSize,\
-	local uchar* rdData,\
-	local uchar* vData,\
-	local uchar* tempKey){
+	ushort encSize\
+	){
     
     int id = get_global_id(0);
+    int lid = get_global_id(0);
+    uchar tempKey[1024]; 
+    uchar rdData[512];
+    uchar vData[512];
     uchar my_pass_len = passwords[id*pass_len];
-    local uchar pass_buffer[32];
-    uchar pb[32];
+    uchar pass_buffer[32];
     uchar key[32];
     for(int i = 0;i<my_pass_len;i++){
         pass_buffer[i] = passwords[id*pass_len+1+i];
-	pb[i] = passwords[id*pass_len+1+i];
     }
 
     derive(pass_buffer, my_pass_len, key);
     aes_context aes; 
-    Init(&aes, key, passlen, iv);
+    Init(&aes, key, klen, iv);
 
     blockDecrypt(&aes, erdData, erdSize, rdData);
     
@@ -873,25 +873,33 @@ kernel void zip_staes_kernel( \
 
     derive(tempKey, erdSize, key);   
     
-    Init(&aes, key, passlen, iv);
+    Init(&aes, key, klen, iv);
 
     blockDecrypt(&aes, encData, encSize, vData);
     
-    uint crc = 0;
+    uint crc;
 
-    crc = crc ^ vData[encSize-1];
-    crc = crc << 8 ^ vData[encSize-2];
-    crc = crc << 8 ^ vData[encSize-3];
-    crc = crc << 8 ^ vData[encSize-4];
+    crc = vData[encSize-1];
+    crc = (crc << 8) ^ vData[encSize-2];
+    crc = (crc << 8) ^ vData[encSize-3];
+    crc = (crc << 8) ^ vData[encSize-4];
+    
     
     uint crc3 = crc32(0, vData, encSize-4); 
+    /*
+    printf("heslo: ");
+    for (int i = 0; i < my_pass_len; i++)
+	printf("%c", pass_buffer[i]);
+    printf(" lid: %d gid: %d crc: %u crc3: %u encs: %u\n", lid, id, crc, crc3, encSize);
+    */
     if (crc != crc3){
         return;
     }
-    
+    printf("prosel jsem");
     *found_flag = 1;
     uint big_pos = id/32;
     uint small_pos = id%32;
     uint val = 0x80000000 >> small_pos;
     atomic_or(found_vector+big_pos,val);
+    
 }
