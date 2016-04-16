@@ -21,37 +21,30 @@
  * 
  */
 
-#ifndef SevenZCRACKERGPU_H
-#define	SevenZCRACKERGPU_H
+#ifndef SEVENZCRACKERGPU_H
+#define	SEVENZCRACKERGPU_H
 
 #include "SevenZFormat.h"
 #include "GPUCracker.h"
-#include "SevenZCracker.h"
+#include "SevenZCrackerCPU.h"
 
 /**
  * Class for PKSevenZ Stream Cipher cracking on GPU
  */
-class SevenZCrackerGPU: public GPUCracker, protected SevenZCracker {
+class SevenZCrackerGPU: public GPUCracker {
 public:
-    SevenZCrackerGPU(std::vector<SevenZInitData> *data);
+    SevenZCrackerGPU(SevenZInitData *data);
     SevenZCrackerGPU(const SevenZCrackerGPU& orig);
     virtual ~SevenZCrackerGPU();
-    
-    virtual void sharedDataInit();
 
     virtual bool verifyPassword(std::string& pass);
     virtual bool initData();
-    
-
-    virtual void debugKernel(int clFinishRes);
-
 
 private:
-    cl::Buffer crcTable_buffer;
-    cl::Buffer lastCRCByte_buffer;
-    cl::Buffer randomStream_buffer;
-    cl::Buffer debug_buffer;
+    cl::Buffer first_block;
+    cl::Buffer iv;
 
+    SevenZCrackerCPU *cpu;
 };
 
 #endif	/* SevenZCRACKERGPU_H */

@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2014 Jan Schmied
+ * Copyright (C) 2016 Vojtech Vecera
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy 
  * of this software and associated documentation files (the "Software"), to deal 
@@ -20,62 +20,37 @@
  * SOFTWARE.
  * 
  */
-// 
-// #include "SevenZCrackerGPU.h"
-// 
-// SevenZCrackerGPU::SevenZCrackerGPU(std::vector<SevenZInitData> *data):SevenZCracker(data) {
-//     kernelFile = "kernels/zip_pk_kernel.cl";
-//     kernelName = "zip_pk_kernel";
-// }
-// 
-// SevenZCrackerGPU::SevenZCrackerGPU(const SevenZCrackerGPU& orig):SevenZCracker(orig) {
-// }
-// 
-// SevenZCrackerGPU::~SevenZCrackerGPU() {
-// }
-// 
-// bool SevenZCrackerGPU::initData() {
-//     int32_t files_count = data->size();
-//     lastCRCByte_buffer = cl::Buffer(context,CL_MEM_READ_ONLY,sizeof(char)*files_count);
-//     crcTable_buffer = cl::Buffer(context,CL_MEM_READ_ONLY,sizeof(int)*256);
-//     randomStream_buffer = cl::Buffer(context,CL_MEM_READ_ONLY,sizeof(char)*12*files_count);
-//     
-//     uint8_t *buffer = new uint8_t[12*files_count];
-//     for(int i = 0;i<data->size();i++){
-//         buffer[i] = (*data)[i].crc32 >> 24;
-//     }
-//     que.enqueueWriteBuffer(crcTable_buffer,CL_TRUE,0,sizeof(int)*256,crc32_table);
-//     que.enqueueWriteBuffer(lastCRCByte_buffer,CL_TRUE,0,sizeof(char)*files_count,buffer);
-//     for(int i = 0;i<files_count;i++){
-//         for(int j = 0;j<12;j++){
-//             buffer[i*12+j] = (*data)[i].streamBuffer[j];
-//         }
-//     }
-//     que.enqueueWriteBuffer(randomStream_buffer,CL_TRUE,0,sizeof(char)*12*files_count,buffer);
-//     kernel.setArg(userParamIndex, files_count);
-//     kernel.setArg(userParamIndex+1, randomStream_buffer);
-//     kernel.setArg(userParamIndex+2, lastCRCByte_buffer);
-//     kernel.setArg(userParamIndex+3, crcTable_buffer);
-//     delete[] buffer;
-//     return true;
-// }
-// 
-// void SevenZCrackerGPU::debugKernel(int clFinishRes) {
-//     uint8_t debug[64];
-//     que.enqueueReadBuffer(debug_buffer,CL_TRUE,0,sizeof(char)*64,debug);
-//     int t = 1;
-// }
-// 
-// void SevenZCrackerGPU::sharedDataInit() {
-//     createCRC32Table();
-// }
-// 
-// 
-// bool SevenZCrackerGPU::verifyPassword(std::string& pass) {
-//     SevenZKeys keys;
-//     initKeys(&keys,reinterpret_cast<const unsigned char*>(pass.c_str()),pass.length(),(*data)[0].streamBuffer);
-//     return verify(&keys,&(*data)[0]);
-// }
-// 
-// 
-// 
+ 
+ #include "SevenZCrackerGPU.h"
+ 
+ SevenZCrackerGPU::SevenZCrackerGPU(SevenZInitData *data){
+     cpu = new SevenZCrackerCPU(data);
+     kernelFile = "kernels/sevenz_aes_kernel.cl";
+     kernelName = "sevenz_aes_kernel";
+ }
+ 
+ SevenZCrackerGPU::SevenZCrackerGPU(const SevenZCrackerGPU& orig){
+ }
+ 
+ SevenZCrackerGPU::~SevenZCrackerGPU() {
+ }
+ 
+ bool SevenZCrackerGPU::initData() {
+     
+     first_block = cl::Buffer(context,CL_MEM_READ_WRITE,sizeof(char)*DECODE_BLOCK_SIZE);
+     iv = cl::Buffer(context,CL_MEM_READ_WRITE,sizeof(char)*DECODE_BLOCK_SIZE);
+     
+     que.enqueueWriteBuffer(first_block, CL_TRUE, 0, sizeof(char)*DECODE_BLOCK_SIZE, cpu->check_data.encData);
+     que.enqueueWriteBuffer(iv, CL_TRUE, 0, sizeof(char)*DECODE_BLOCK_SIZE, cpu->iv);
+     
+     kernel.setArg(userParamIndex, first_block);
+     kernel.setArg(userParamIndex+1, iv);
+     return true;
+ }
+ 
+ bool SevenZCrackerGPU::verifyPassword(std::string& pass) {
+    return !cpu->checkPassword(&pass);
+ }
+ 
+ 
+ 
