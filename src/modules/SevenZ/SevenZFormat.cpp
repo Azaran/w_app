@@ -67,14 +67,16 @@ uint64_t SevenZFormat::SevenZUINT64(ifstream *stream){
     }
 
     uint8_t num[bytes];
-    num[bytes - 1] = firstByte >> (bytes - 1);    // MSB
+    num[0] = firstByte >> (bytes - 1);    // MSB
     if (bytes > 1)
-	stream->read(reinterpret_cast<char*>(&num[0]), bytes-1);
+	stream->read(reinterpret_cast<char*>(&num[1]), bytes-1);
 
     uint64_t sum = 0;
-    for (int i = bytes - 1; i >= 0; i--)	
-	sum = ((sum | num[i]) << (i * 8));
-
+    uint8_t i = 0;
+    while(bytes--){
+        sum = sum << 8;
+        sum += num[i++];
+    }
     return sum;
 }
 
@@ -294,6 +296,11 @@ int SevenZFormat::decompressHdr(ifstream *istream, uint64_t numCoders){
 	if (data.folders[0].coder[i].coderID[0] == 0x03)
 	    if (data.folders[0].coder[i].coderID[1] == 0x01){
 		destlen = data.folders[0].unPackSize[0];
+		ofstream enchdr;
+		rawhdr.open ("raw.hdr", ios::out | ios::trunc | ios::binary);
+		for (uint64_t i = 0; i < destlen; i++)
+		    rawhdr << rawbuf[i];
+		rawhdr.close(); 
 		rawbuf = new uint8_t[destlen];
 		copyStreamToBuffer(istream, data.packInfo->packPos,\
 			data.packInfo->packSize[0], &compbuf);
@@ -304,10 +311,12 @@ int SevenZFormat::decompressHdr(ifstream *istream, uint64_t numCoders){
 			LZMA_FINISH_END, &status, &alloc);
 		if ( destlen != data.folders[0].unPackSize[0] || srclen != data.packInfo->packSize[0]){
 		    cerr << "Something went wrong with decompression!" << endl;
+                    cerr << "destlen: " << destlen << " unPackSize: " << data.folders[0].unPackSize[0] << endl;
+                    cerr << " srclen: " << srclen << " packSize: " << data.packInfo->packSize[0] << endl; 
 		    exit(156);
 		}
 		cout << "decode: " << decode << endl;
-		// Might need some optimalization
+		// TODO: Might need some optimalization
 		ofstream rawhdr;
 		rawhdr.open ("raw.hdr", ios::out | ios::trunc | ios::binary);
 		for (uint64_t i = 0; i < destlen; i++)

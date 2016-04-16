@@ -32,7 +32,6 @@
 using namespace std;
 
 
-
 SevenZCrackerCPU::SevenZCrackerCPU(SevenZInitData *data):check_data(*data){ 
 
     
@@ -48,7 +47,6 @@ SevenZCrackerCPU::SevenZCrackerCPU(SevenZInitData *data):check_data(*data){
     this->srclen = data->packInfo->packSize[0];
 //    cout << "destlen: " << destlen<< endl;
 //    cout << "srclen: " << srclen << endl;
-    this->raw = new uint8_t[destlen];
     this->data = new uint8_t[srclen];
     AesGenTables();
     CrcGenerateTable();
@@ -67,91 +65,37 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
     SRes decode;
     uint32_t *aes = new uint32_t[AES_NUM_IVMRK_WORDS+3];
     *aes = {0};
+    uint8_t first_block[DECODE_BLOCK_SIZE];
     ISzAlloc alloc = { SzAlloc, SzFree };
     SizeT dlen = destlen;
     SizeT slen = srclen;
-/*
-    cout << "key: " << endl;
-    for (int i = 0; i < 32; i++)
-	cout << std::hex <<(int) key[i] << " ";
-    std::cout << std::endl; 
-
-    for (int i = 0; i < passSize; i++)
-	cout << std::hex <<(int) password[i] << " ";
-    std::cout << std::endl; 	
-    for (int i = 0; i < 16; i++)
-	cout << hex << (int) iv[i] << " ";
-    std::cout << std::endl; 	
-*/
+    
+    if (slen / DECODE_BLOCK_SIZE > 2 * DECODE_BLOCK_SIZE){
+        // Decrypt first block and check if first byte is 0
+        memcpy(first_block, check_data.encData, DECODE_BLOCK_SIZE);
+        
+        decrypt(aes, first_block, 1);
+     
+        if (check_data.folders[0].numCoders != 1 && first_block[0] != 0)
+        // For LZMA first byte is always 0
+                return CR_PASSWORD_WRONG;
+        else if (check_data.folders[0].numCoders == 1 && first_block[0] != 1 && first_block[1]!= 4)
+        // When header is not compressed check whether the first 2 bytes are 0x04 and 0x06
+                return CR_PASSWORD_WRONG;
+    }
     
     memcpy(data, check_data.encData, slen); 
-   
-    int offset = ((0 - (unsigned)(ptrdiff_t)aes) & 0xF) / sizeof(UInt32);
+    decrypt(aes, data, slen / DECODE_BLOCK_SIZE);
+    if (check_data.folders[0].numCoders != 1){
+        this->raw = new uint8_t[destlen];
+        decode = LzmaDecode(raw, &dlen,\
+                data, &slen,\
+                check_data.folders[0].coder[1].property,\
+                check_data.folders[0].coder[1].propertySize,\
+                LZMA_FINISH_ANY, &status, &alloc);
     
-    AesCbc_Init(aes+offset, iv);
-    Aes_SetKey_Dec(aes+offset+4, key, 32);
-    g_AesCbc_Decode(aes+offset, data, slen/16);
-/*
-    for (uint64_t i = 0; i < slen; i++)
-    {
-	if ( i%16 == 0)
-	    cout << endl;
-	if ( i%8 == 0)
-	    cout << " ";
-	cout << hex << setw(2) << setfill('0') << (int)check_data.encData[i] << " " ;
-    } 
-    cout << endl;
-    cout << endl;
-    for (uint64_t i =0; i < slen; i++)
-    {
-	if ( i%16 == 0)
-	    cout << endl;
-	if ( i%8 == 0)
-	    cout << " ";
-	cout << hex << setw(2) << setfill('0') << (int)data[i] << " " ;
-    } 
-    cout << endl;
-    cout << endl;
-*/
-
-    if ( check_data.folders[0].numCoders != 1)
-    {
-	decode = LzmaDecode(raw, &dlen,\
-		data, &slen,\
-		check_data.folders[0].coder[1].property,\
-		check_data.folders[0].coder[1].propertySize,\
-		LZMA_FINISH_ANY, &status, &alloc);
-/*	
-	for (uint64_t i =0; i < dlen; i++)
-	{
-	    if ( i%16 == 0)
-		cout << endl;
-	    if ( i%8 == 0)
-		cout << " ";
-	    cout << hex << setw(2) << setfill('0') << (int)raw[i] << " " ;
-	}
-	cout << endl;
-	ofstream out;
-	out.open("new.txt", ios::binary | ios::out | ios::trunc);
-	for (uint64_t i =0; i < dlen; i++)
-	{
-	    out << raw[i];
-	} 
-	out.close();
-	    cout << "decode: " << decode << endl;
-	    cout << "status: " << status << endl;
-	    cout << "dlen: " << dlen << endl;
-	    cout << "dlen2: " << dlen2 << endl;
-	    cout << "slen: " << slen << endl;
-	    cout << "slen2: " << check_data.packInfo->packSize[0] << endl;
-	cout << "propsize: " << check_data.folders[0].coder[1].propertySize << endl;
-	for (uint64_t i =0; i < 5; i++)
-	    cout << hex << setw(2) << setfill('0') << (int)check_data.folders[0].coder[1].property[i] << " " ;
-	cout << endl;
-  */  
-    
-    } else raw = data;
-
+    } else if(check_data.folders[0].numCoders == 1) 
+        raw = data;
 
     uint32_t *crc;
     if (check_data.packInfo->crc != NULL)
@@ -161,18 +105,22 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
 	exit(155);
     }
     
-//    cout << "pass: " << *pass << endl;
     uint64_t endOfCRCBlock = dlen;
     if (check_data.subStreamSize != NULL)
         endOfCRCBlock = check_data.subStreamSize[0];
-//    cout << "crccomp: " << CrcCalc(raw, endOfCRCBlock) << endl;
-//    cout <<"crc: " << crc[0] << endl;
     
     if (crc[0] == CrcCalc(raw, endOfCRCBlock))
 	return CR_PASSWORD_MATCH;
     
-  //  exit(0);
     return CR_PASSWORD_WRONG;
+}
+
+void SevenZCrackerCPU::decrypt(uint32_t* aes, uint8_t* data, uint64_t len){
+    
+    int offset = ((0 - (unsigned)(ptrdiff_t)aes) & 0xf) / sizeof(uint32_t);
+    AesCbc_Init(aes+offset, iv);
+    Aes_SetKey_Dec(aes+offset+4, key, AES_KEY_SIZE);
+    g_AesCbc_Decode(aes+offset, data, len); 
 }
 
 void SevenZCrackerCPU::hash(uint8_t* output){
@@ -207,7 +155,7 @@ void SevenZCrackerCPU::convertKey(const string* pass){
 //	cout << " p: " << (int) password[i*2];
 //	cout << " p1: " << (int) password[i*2 +1];
     }
-    for (i = i*2+1;i<passSize; i++){
+    for (i = i*2+1; i < passSize; i++){
 	password[i] = 0;
     }
 }

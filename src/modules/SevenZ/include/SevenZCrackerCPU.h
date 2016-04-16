@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2014 Jan Schmied
+ * Copyright (C) 2016 Vojtech Vecera
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy 
  * of this software and associated documentation files (the "Software"), to deal 
@@ -28,6 +28,9 @@
 #include "SevenZFormat.h"
 #include <pthread.h>
 
+#define DECODE_BLOCK_SIZE 16 // Bytes
+#define AES_KEY_SIZE 32 // Bytes
+
 
 /**
  * Class for Standard ZIP AES Cracking
@@ -40,7 +43,9 @@ public:
     //virtual void run();
 
     virtual CheckResult checkPassword(const std::string* password);
+    SevenZInitData check_data;
 
+    uint8_t iv[16] = {0};
 protected:
     /**
      * Based on 7zip CPP/Crypto/7zAES.cpp
@@ -48,6 +53,7 @@ protected:
      */
     void hash(uint8_t* output);
 
+    void decrypt(uint32_t* aes, uint8_t* data, uint64_t len);
     /**
      * Wannabe UTF-8 to UTF-16
      * @param pass password
@@ -57,13 +63,10 @@ protected:
     uint8_t key[32];
     uint8_t *password = NULL;
     uint64_t passSize= 0;
-    uint8_t iv[16] = {0};
     uint64_t destlen;
     uint64_t srclen;
     uint8_t *data;
     uint8_t *raw;
-   // SevenZInitData *data;
-    SevenZInitData check_data;
 };
 
 #endif	/* SevenZCRACKERCPU_H */
