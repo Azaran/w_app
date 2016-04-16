@@ -63,7 +63,6 @@ protected:
     void derive(const uint8_t* pass, unsigned int passLen, uint8_t* output);
     
     ZIPStAESCrackerCPU *cpu; 
-    ZIPInitData data;
 
     cl::Buffer erdData;
     cl::Buffer encData;

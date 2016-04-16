@@ -1,6 +1,6 @@
 /* 
- * Copyright (C) 2014 Jan Schmied
- * 
+ * Copyright (C) 2016 Vojtech Vecera
+ * * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy 
  * of this software and associated documentation files (the "Software"), to deal 
  * in the Software without restriction, including without limitation the rights 
@@ -24,15 +24,7 @@
 #include "ZIPStAESCrackerGPU.h"
 
 ZIPStAESCrackerGPU::ZIPStAESCrackerGPU(std::vector<ZIPInitData> *data) {
-    
-    for(int i = 0;i< data->size();i++){
-        if((*data)[i].dataLen > 0){
-	    cpu = new ZIPStAESCrackerCPU(&data[i]);
-            break;
-        }
-    }
-    
-    
+    cpu = new ZIPStAESCrackerCPU(data); 
     kernelFile = "kernels/zip_staes_kernel.cl";
     kernelName = "zip_staes_kernel";
 
