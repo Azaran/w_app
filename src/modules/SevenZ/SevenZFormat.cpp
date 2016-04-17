@@ -296,11 +296,6 @@ int SevenZFormat::decompressHdr(ifstream *istream, uint64_t numCoders){
 	if (data.folders[0].coder[i].coderID[0] == 0x03)
 	    if (data.folders[0].coder[i].coderID[1] == 0x01){
 		destlen = data.folders[0].unPackSize[0];
-		ofstream enchdr;
-		rawhdr.open ("raw.hdr", ios::out | ios::trunc | ios::binary);
-		for (uint64_t i = 0; i < destlen; i++)
-		    rawhdr << rawbuf[i];
-		rawhdr.close(); 
 		rawbuf = new uint8_t[destlen];
 		copyStreamToBuffer(istream, data.packInfo->packPos,\
 			data.packInfo->packSize[0], &compbuf);
