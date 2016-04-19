@@ -67,6 +67,8 @@ protected:
     cl::Buffer erdData;
     cl::Buffer encData;
     cl::Buffer iv;
+    cl::Buffer g_buffer;
+    cl::Buffer sbox_buffer;
 };
 
 #endif	/* ZIPStAESCRACKERGPU_H */

@@ -313,10 +313,6 @@ ZIPInitData::ZIPInitData(const ZIPInitData& orig){
     this->erdSize = orig.erdSize;
     this->ivSize = orig.ivSize;
     this->saltLen = orig.saltLen;
-    ::memcpy(this->salt,orig.salt,16);
-    ::memcpy(this->verifier,orig.verifier,2);
-    ::memcpy(this->authCode,orig.authCode,10);
-    ::memcpy(this->streamBuffer,orig.streamBuffer,12);
     if (orig.type == SAES || orig.type == TDES) {
 	this->encData = new uint8_t[orig.encSize];
 	this->erdData = new uint8_t[orig.erdSize];
@@ -324,6 +320,12 @@ ZIPInitData::ZIPInitData(const ZIPInitData& orig){
 	::memcpy(this->encData, orig.encData, orig.encSize);
 	::memcpy(this->erdData, orig.erdData, orig.erdSize);
 	::memcpy(this->ivData, orig.ivData, orig.ivSize);
+    } else {
+	::memcpy(this->salt,orig.salt,16);
+	::memcpy(this->verifier,orig.verifier,2);
+	::memcpy(this->authCode,orig.authCode,10);
+	::memcpy(this->streamBuffer,orig.streamBuffer,12);
     }
+    
 }
 

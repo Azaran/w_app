@@ -36,6 +36,23 @@
 #define _MAX_ROUNDS      14
 #define MAX_IV_SIZE      16
 
+#define TOTAL_SBOX_SIZE 256+256+30+(12*4*256)
+#define S5_POS 256
+#define RCON_POS 2*256
+#define T1_POS RCON_POS+30
+#define T2_POS T1_POS+4*256
+#define T3_POS T2_POS+4*256
+#define T4_POS T3_POS+4*256
+#define T5_POS T4_POS+4*256
+#define T6_POS T5_POS+4*256
+#define T7_POS T6_POS+4*256
+#define T8_POS T7_POS+4*256
+#define U1_POS T8_POS+4*256
+#define U2_POS U1_POS+4*256
+#define U3_POS U2_POS+4*256
+#define U4_POS U3_POS+4*256
+
+
 typedef struct {
     bool     CBCMode;
     int      m_uRounds;
@@ -43,207 +60,224 @@ typedef struct {
     uchar     m_expandedKey[_MAX_ROUNDS+1][4][4];
 } aes_context;
 
-static uchar S[256],S5[256],rcon[30];
-static uchar T1[256][4],T2[256][4],T3[256][4],T4[256][4];
-static uchar T5[256][4],T6[256][4],T7[256][4],T8[256][4];
-static uchar U1[256][4],U2[256][4],U3[256][4],U4[256][4];
+// static global uchar S[256],S5[256],rcon[30];
+// static global uchar T1[256][4],T2[256][4],T3[256][4],T4[256][4];
+// static global uchar T5[256][4],T6[256][4],T7[256][4],T8[256][4];
+// static global uchar U1[256][4],U2[256][4],U3[256][4],U4[256][4];
 
 inline void Xor128_2(void *dest,const void *arg1,const void *arg2){
-    #pragma unroll
+#pragma unroll
     for (int I=0;I<16;I++)
 	((uchar*)dest)[I]=((uchar*)arg1)[I]^((uchar*)arg2)[I];
 }
 inline void Xor128_2_global(void *dest,global void *arg1,const void *arg2){
-    #pragma unroll
+#pragma unroll
     for (int I=0;I<16;I++)
 	((uchar*)dest)[I]=((global uchar*)arg1)[I]^((uchar*)arg2)[I];
 }
 
-inline void Xor128_4(uchar *dest,const uchar *arg1,const uchar *arg2,
-	const uchar *arg3,const uchar *arg4){
-    #pragma unroll
+inline void Xor128_4(uchar *dest,const global uchar *arg1,const global uchar *arg2, const global uchar *arg3,const global uchar *arg4){
+#pragma unroll
     for (int I=0;I<4;I++)
 	dest[I]=arg1[I]^arg2[I]^arg3[I]^arg4[I];
 }
 
 inline void Copy128(uchar *dest, uchar *src){
-    #pragma unroll
+#pragma unroll
     for (int I=0;I<16;I++)
 	dest[I]=src[I];
 }
 inline void Copy128_global(uchar *dest,global uchar *src){
-    #pragma unroll
+#pragma unroll
+    for (int I=0;I<16;I++)
+	dest[I]=src[I];
+}
+inline void Copy128_g_in(global uchar *dest, uchar *src){
+#pragma unroll
     for (int I=0;I<16;I++)
 	dest[I]=src[I];
 }
 
 
 
-  
-void blockDecrypt(aes_context *aes, global uchar *input, uint inputLen, uchar *outBuffer)
+
+void blockDecrypt(aes_context *aes, global uchar* sbox_buffer, global uchar *input, uint inputLen, global uchar *outBuffer)
 {
-  if (inputLen <= 0)
-    return;
+    global uchar* S5 = sbox_buffer+S5_POS;
+    global uchar* T5 = sbox_buffer + T5_POS;
+    global uchar* T6 = sbox_buffer + T6_POS;
+    global uchar* T7 = sbox_buffer + T7_POS;
+    global uchar* T8 = sbox_buffer + T8_POS;
 
-  size_t numBlocks=inputLen/16;
+    if (inputLen <= 0)
+	return;
 
-  uchar block[16], iv[4][4];
-  //memcpy(iv,aes->m_initVector,16); 
-  #pragma unroll
-  for(int i = 0; i < 4; i++)
-      for(int j = 0; j < 4; j++)
-	  iv[i][j] = aes->m_initVector[i*4+j];
+    size_t numBlocks=inputLen/16;
 
-  for (size_t i = numBlocks; i > 0; i--)
-  {
-    uchar temp[4][4];
-    
-    Xor128_2_global(temp,input,aes->m_expandedKey[aes->m_uRounds]);
-
-    Xor128_4(block,   T5[temp[0][0]],T6[temp[3][1]],T7[temp[2][2]],T8[temp[1][3]]);
-    Xor128_4(block+4, T5[temp[1][0]],T6[temp[0][1]],T7[temp[3][2]],T8[temp[2][3]]);
-    Xor128_4(block+8, T5[temp[2][0]],T6[temp[1][1]],T7[temp[0][2]],T8[temp[3][3]]);
-    Xor128_4(block+12,T5[temp[3][0]],T6[temp[2][1]],T7[temp[1][2]],T8[temp[0][3]]);
-
-    for(int r = aes->m_uRounds-1; r > 1; r--)
-    {
-      Xor128_2(temp,block,aes->m_expandedKey[r]);
-      Xor128_4(block,   T5[temp[0][0]],T6[temp[3][1]],T7[temp[2][2]],T8[temp[1][3]]);
-      Xor128_4(block+4, T5[temp[1][0]],T6[temp[0][1]],T7[temp[3][2]],T8[temp[2][3]]);
-      Xor128_4(block+8, T5[temp[2][0]],T6[temp[1][1]],T7[temp[0][2]],T8[temp[3][3]]);
-      Xor128_4(block+12,T5[temp[3][0]],T6[temp[2][1]],T7[temp[1][2]],T8[temp[0][3]]);
-    }
-   
-    Xor128_2(temp,block,aes->m_expandedKey[1]);
-    block[ 0] = S5[temp[0][0]];
-    block[ 1] = S5[temp[3][1]];
-    block[ 2] = S5[temp[2][2]];
-    block[ 3] = S5[temp[1][3]];
-    block[ 4] = S5[temp[1][0]];
-    block[ 5] = S5[temp[0][1]];
-    block[ 6] = S5[temp[3][2]];
-    block[ 7] = S5[temp[2][3]];
-    block[ 8] = S5[temp[2][0]];
-    block[ 9] = S5[temp[1][1]];
-    block[10] = S5[temp[0][2]];
-    block[11] = S5[temp[3][3]];
-    block[12] = S5[temp[3][0]];
-    block[13] = S5[temp[2][1]];
-    block[14] = S5[temp[1][2]];
-    block[15] = S5[temp[0][3]];
-    Xor128_2(block,block,aes->m_expandedKey[0]);
-
-    if (aes->CBCMode)
-      Xor128_2(block,block,iv);
-
-    Copy128_global((uchar*)iv,input);
-    Copy128(outBuffer,block);
-
-    input += 16;
-    outBuffer += 16;
-  }
-
-//  memcpy(aes->m_initVector,iv,16);
-  #pragma unroll
-  for(int i = 0; i < 16; i++)
-    aes->m_initVector[i] = (*iv)[i];
-
-}
-
-void keySched(aes_context *aes,uchar key[_MAX_KEY_COLUMNS][4])
-{
-  int j,rconpointer = 0;
-
-  // Calculate the necessary round keys
-  // The number of calculations depends on keyBits and blockBits
-  int uKeyColumns = aes->m_uRounds - 6;
-
-  uchar tempKey[_MAX_KEY_COLUMNS][4];
-
-  // Copy the input key to the temporary key matrix
-
-//  memcpy(tempKey,key,sizeof(tempKey));
-  #pragma unroll
-  for(int i = 0; i < _MAX_KEY_COLUMNS; i++)
-      #pragma unroll
-      for(int j = 0; j < 4; j++)
-	  tempKey[i][j] = key[i][j];
-
-  int r = 0;
-  int t = 0;
-
-  // copy values into round key array
-  for(j = 0;(j < uKeyColumns) && (r <= aes->m_uRounds); )
-  {
-    for(;(j < uKeyColumns) && (t < 4); j++, t++)
-      for (int k=0;k<4;k++)
-        aes->m_expandedKey[r][t][k]=tempKey[j][k];
-
-    if(t == 4)
-    {
-      r++;
-      t = 0;
-    }
-  }
-    
-  while(r <= aes->m_uRounds)
-  {
-    tempKey[0][0] ^= S[tempKey[uKeyColumns-1][1]];
-    tempKey[0][1] ^= S[tempKey[uKeyColumns-1][2]];
-    tempKey[0][2] ^= S[tempKey[uKeyColumns-1][3]];
-    tempKey[0][3] ^= S[tempKey[uKeyColumns-1][0]];
-    tempKey[0][0] ^= rcon[rconpointer++];
-
-    if (uKeyColumns != 8)
-      for(j = 1; j < uKeyColumns; j++)
-        for (int k=0;k<4;k++)
-          tempKey[j][k] ^= tempKey[j-1][k];
-    else
-    {
-      for(j = 1; j < uKeyColumns/2; j++)
-        for (int k=0;k<4;k++)
-          tempKey[j][k] ^= tempKey[j-1][k];
-
-      tempKey[uKeyColumns/2][0] ^= S[tempKey[uKeyColumns/2 - 1][0]];
-      tempKey[uKeyColumns/2][1] ^= S[tempKey[uKeyColumns/2 - 1][1]];
-      tempKey[uKeyColumns/2][2] ^= S[tempKey[uKeyColumns/2 - 1][2]];
-      tempKey[uKeyColumns/2][3] ^= S[tempKey[uKeyColumns/2 - 1][3]];
-      for(j = uKeyColumns/2 + 1; j < uKeyColumns; j++)
-        for (int k=0;k<4;k++)
-          tempKey[j][k] ^= tempKey[j-1][k];
-    }
-    for(j = 0; (j < uKeyColumns) && (r <= aes->m_uRounds); )
-    {
-      for(; (j < uKeyColumns) && (t < 4); j++, t++)
-        for (int k=0;k<4;k++)
-          aes->m_expandedKey[r][t][k] = tempKey[j][k];
-      if(t == 4)
-      {
-        r++;
-        t = 0;
-      }
-    }
-  }   
-}
-
-void keyEncToDec(aes_context *aes)
-{
-  for(int r = 1; r < aes->m_uRounds; r++)
-  {
-    uchar n_expandedKey[4][4];
-    for (int i = 0; i < 4; i++)
-      for (int j = 0; j < 4; j++)
-      {
-        uchar *w=aes->m_expandedKey[r][j];
-        n_expandedKey[j][i]=U1[w[0]][i]^U2[w[1]][i]^U3[w[2]][i]^U4[w[3]][i];
-      }
- //   memcpy(aes->m_expandedKey[r],n_expandedKey,sizeof(aes->m_expandedKey[0]));
-    #pragma unroll
+    uchar block[16], iv[4][4];
+    //memcpy(iv,aes->m_initVector,16); 
+#pragma unroll
     for(int i = 0; i < 4; i++)
+	for(int j = 0; j < 4; j++)
+	    iv[i][j] = aes->m_initVector[i*4+j];
+
+    for (size_t i = numBlocks; i > 0; i--)
+    {
+	uchar temp[4][4];
+
+	Xor128_2_global(temp,input,aes->m_expandedKey[aes->m_uRounds]);
+
+	Xor128_4(block,   (T5+temp[0][0]),(T6+temp[3][1]),(T7+temp[2][2]),  (T8+temp[1][3]));
+	Xor128_4(block+4, (T5+temp[1][0]),(T6+temp[0][1]),(T7+temp[3][2]),  (T8+temp[2][3]));
+	Xor128_4(block+8, (T5+temp[2][0]),(T6+temp[1][1]),(T7+temp[0][2]),  (T8+temp[3][3]));
+	Xor128_4(block+12,(T5+temp[3][0]),(T6+temp[2][1]),(T7+temp[1][2]),  (T8+temp[0][3]));
+
+	for(int r = aes->m_uRounds-1; r > 1; r--)
+	{
+	    Xor128_2(temp,block,aes->m_expandedKey[r]);
+	    Xor128_4(block,   (T5+temp[0][0]),(T6+temp[3][1]),(T7+temp[2][2]), (T8+temp[1][3]));
+	    Xor128_4(block+4, (T5+temp[1][0]),(T6+temp[0][1]),(T7+temp[3][2]), (T8+temp[2][3]));
+	    Xor128_4(block+8, (T5+temp[2][0]),(T6+temp[1][1]),(T7+temp[0][2]), (T8+temp[3][3]));
+	    Xor128_4(block+12,(T5+temp[3][0]),(T6+temp[2][1]),(T7+temp[1][2]), (T8+temp[0][3]));
+	}
+
+	Xor128_2(temp,block,aes->m_expandedKey[1]);
+	block[ 0] = *(S5+temp[0][0]);
+	block[ 1] = *(S5+temp[3][1]);
+	block[ 2] = *(S5+temp[2][2]);
+	block[ 3] = *(S5+temp[1][3]);
+	block[ 4] = *(S5+temp[1][0]);
+	block[ 5] = *(S5+temp[0][1]);
+	block[ 6] = *(S5+temp[3][2]);
+	block[ 7] = *(S5+temp[2][3]);
+	block[ 8] = *(S5+temp[2][0]);
+	block[ 9] = *(S5+temp[1][1]);
+	block[10] = *(S5+temp[0][2]);
+	block[11] = *(S5+temp[3][3]);
+	block[12] = *(S5+temp[3][0]);
+	block[13] = *(S5+temp[2][1]);
+	block[14] = *(S5+temp[1][2]);
+	block[15] = *(S5+temp[0][3]);
+	Xor128_2(block,block,aes->m_expandedKey[0]);
+
+	if (aes->CBCMode)
+	    Xor128_2(block,block,iv);
+
+	Copy128_global((uchar*)iv,input);
+	Copy128_g_in(outBuffer,block);
+
+	input += 16;
+	outBuffer += 16;
+    }
+
+    //  memcpy(aes->m_initVector,iv,16);
+    #pragma unroll
+    for(int i = 0; i < 16; i++)
+	aes->m_initVector[i] = (*iv)[i];
+
+}
+
+void keySched(aes_context *aes, global uchar* sbox_buffer, uchar key[_MAX_KEY_COLUMNS][4])
+{
+    global uchar* S =  sbox_buffer;
+    global uchar* rcon = sbox_buffer+RCON_POS;
+    
+    int j,rconpointer = 0;
+
+    // Calculate the necessary round keys
+    // The number of calculations depends on keyBits and blockBits
+    int uKeyColumns = aes->m_uRounds - 6;
+
+    uchar tempKey[_MAX_KEY_COLUMNS][4];
+
+    // Copy the input key to the temporary key matrix
+
+    //  memcpy(tempKey,key,sizeof(tempKey));
+    #pragma unroll
+    for(int i = 0; i < _MAX_KEY_COLUMNS; i++)
 	#pragma unroll
 	for(int j = 0; j < 4; j++)
-	    aes->m_expandedKey[r][j][i] = n_expandedKey[j][i];
-  }
+	    tempKey[i][j] = key[i][j];
+
+    int r = 0;
+    int t = 0;
+
+    // copy values into round key array
+    for(j = 0;(j < uKeyColumns) && (r <= aes->m_uRounds); )
+    {
+	for(;(j < uKeyColumns) && (t < 4); j++, t++)
+	    for (int k=0;k<4;k++)
+		aes->m_expandedKey[r][t][k]=tempKey[j][k];
+
+	if(t == 4)
+	{
+	    r++;
+	    t = 0;
+	}
+    }
+
+    while(r <= aes->m_uRounds)
+    {
+	tempKey[0][0] ^= S[tempKey[uKeyColumns-1][1]];
+	tempKey[0][1] ^= S[tempKey[uKeyColumns-1][2]];
+	tempKey[0][2] ^= S[tempKey[uKeyColumns-1][3]];
+	tempKey[0][3] ^= S[tempKey[uKeyColumns-1][0]];
+	tempKey[0][0] ^= rcon[rconpointer++];
+
+	if (uKeyColumns != 8)
+	    for(j = 1; j < uKeyColumns; j++)
+		for (int k=0;k<4;k++)
+		    tempKey[j][k] ^= tempKey[j-1][k];
+	else
+	{
+	    for(j = 1; j < uKeyColumns/2; j++)
+		for (int k=0;k<4;k++)
+		    tempKey[j][k] ^= tempKey[j-1][k];
+
+	    tempKey[uKeyColumns/2][0] ^= S[tempKey[uKeyColumns/2 - 1][0]];
+	    tempKey[uKeyColumns/2][1] ^= S[tempKey[uKeyColumns/2 - 1][1]];
+	    tempKey[uKeyColumns/2][2] ^= S[tempKey[uKeyColumns/2 - 1][2]];
+	    tempKey[uKeyColumns/2][3] ^= S[tempKey[uKeyColumns/2 - 1][3]];
+	    for(j = uKeyColumns/2 + 1; j < uKeyColumns; j++)
+		for (int k=0;k<4;k++)
+		    tempKey[j][k] ^= tempKey[j-1][k];
+	}
+	for(j = 0; (j < uKeyColumns) && (r <= aes->m_uRounds); )
+	{
+	    for(; (j < uKeyColumns) && (t < 4); j++, t++)
+		for (int k=0;k<4;k++)
+		    aes->m_expandedKey[r][t][k] = tempKey[j][k];
+	    if(t == 4)
+	    {
+		r++;
+		t = 0;
+	    }
+	}
+    }   
+}
+
+void keyEncToDec(aes_context *aes, global uchar* sbox_buffer)
+{
+    global uchar* U1 = sbox_buffer + U1_POS;
+    global uchar* U2 = sbox_buffer + U2_POS;
+    global uchar* U3 = sbox_buffer + U3_POS;
+    global uchar* U4 = sbox_buffer + U4_POS;
+    for(int r = 1; r < aes->m_uRounds; r++)
+    {
+	uchar n_expandedKey[4][4];
+	for (int i = 0; i < 4; i++)
+	    for (int j = 0; j < 4; j++)
+	    {
+		uchar *w=aes->m_expandedKey[r][j];
+		n_expandedKey[j][i]=*(U1+w[0]*4+i)^*(U2+w[1]*4+i)^*(U3+w[2]*4+i)^*(U4+w[3]*4+i);
+	    }
+	//   memcpy(aes->m_expandedKey[r],n_expandedKey,sizeof(aes->m_expandedKey[0]));
+#pragma unroll
+	for(int i = 0; i < 4; i++)
+#pragma unroll
+	    for(int j = 0; j < 4; j++)
+		aes->m_expandedKey[r][j][i] = n_expandedKey[j][i];
+    }
 } 
 
 
@@ -264,80 +298,96 @@ void keyEncToDec(aes_context *aes)
 #define inv_affine(x) \
     (w = (uint)x, w = (w<<1)^(w<<3)^(w<<6), (uchar)(0x05^(w^(w>>8))))
 
-void GenerateTables()
+void GenerateTables(global uchar* sbox_buffer)
 {
-  uchar pow[512],log[256];
-  int i = 0, w = 1; 
-  do
-  {   
-    pow[i] = (uchar)w;
-    pow[i + 255] = (uchar)w;
-    log[w] = (uchar)i++;
-    w ^=  (w << 1) ^ (w & ff_hi ? ff_poly : 0);
-  } while (w != 1);
- 
-  for (int i = 0,w = 1; i < sizeof(rcon)/sizeof(rcon[0]); i++)
-  {
-    rcon[i] = w;
-    w = (w << 1) ^ (w & ff_hi ? ff_poly : 0);
-  }
-  for(int i = 0; i < 256; ++i)
-  {   
-    uchar b=S[i]=fwd_affine(FFinv((uchar)i));
-    T1[i][1]=T1[i][2]=T2[i][2]=T2[i][3]=T3[i][0]=T3[i][3]=T4[i][0]=T4[i][1]=b;
-    T1[i][0]=T2[i][1]=T3[i][2]=T4[i][3]=FFmul02(b);
-    T1[i][3]=T2[i][0]=T3[i][1]=T4[i][2]=FFmul03(b);
-    S5[i] = b = FFinv(inv_affine((uchar)i));
-    U1[b][3]=U2[b][0]=U3[b][1]=U4[b][2]=T5[i][3]=T6[i][0]=T7[i][1]=T8[i][2]=FFmul0b(b);
-    U1[b][1]=U2[b][2]=U3[b][3]=U4[b][0]=T5[i][1]=T6[i][2]=T7[i][3]=T8[i][0]=FFmul09(b);
-    U1[b][2]=U2[b][3]=U3[b][0]=U4[b][1]=T5[i][2]=T6[i][3]=T7[i][0]=T8[i][1]=FFmul0d(b);
-    U1[b][0]=U2[b][1]=U3[b][2]=U4[b][3]=T5[i][0]=T6[i][1]=T7[i][2]=T8[i][3]=FFmul0e(b);
-  }
+    global uchar* S =  sbox_buffer;
+    global uchar* S5 = sbox_buffer+S5_POS;
+    global uchar* rcon = sbox_buffer+RCON_POS;
+    global uchar* T1 = sbox_buffer + T1_POS;
+    global uchar* T2 = sbox_buffer + T2_POS;
+    global uchar* T3 = sbox_buffer + T3_POS;
+    global uchar* T4 = sbox_buffer + T4_POS;
+    global uchar* T5 = sbox_buffer + T5_POS;
+    global uchar* T6 = sbox_buffer + T6_POS;
+    global uchar* T7 = sbox_buffer + T7_POS;
+    global uchar* T8 = sbox_buffer + T8_POS;
+    global uchar* U1 = sbox_buffer + U1_POS;
+    global uchar* U2 = sbox_buffer + U2_POS;
+    global uchar* U3 = sbox_buffer + U3_POS;
+    global uchar* U4 = sbox_buffer + U4_POS;
+
+    uchar pow[512],log[256];
+    int i = 0, w = 1; 
+    do
+    {   
+	pow[i] = (uchar)w;
+	pow[i + 255] = (uchar)w;
+	log[w] = (uchar)i++;
+	w ^=  (w << 1) ^ (w & ff_hi ? ff_poly : 0);
+    } while (w != 1);
+
+    for (int i = 0,w = 1; i < 30; i++)
+    {
+	rcon[i] = w;
+	w = (w << 1) ^ (w & ff_hi ? ff_poly : 0);
+    }
+    for(int i = 0; i < 256; ++i)
+    {   
+	uchar b=*(S+i)=fwd_affine(FFinv((uchar)i));
+	*(T1+i*4+1)=*(T1+i*4+2)=*(T2+i*4+2)=*(T2+i*4+3)=*(T3+i*4+0)=*(T3+i*4+3)=*(T4+i*4+0)=*(T4+i*4+1)=b;
+	*(T1+i*4+0)=*(T2+i*4+1)=*(T3+i*4+2)=*(T4+i*4+3)=FFmul02(b);
+	*(T1+i*4+3)=*(T2+i*4+0)=*(T3+i*4+1)=*(T4+i*4+2)=FFmul03(b);
+	*(S5+i) = b = FFinv(inv_affine((uchar)i));
+	*(U1+b*4+3)=*(U2+b*4+0)=*(U3+b*4+1)=*(U4+b*4+2)=*(T5+i*4+3)=*(T6+i*4+0)=*(T7+i*4+1)=*(T8+i*4+2)=FFmul0b(b);
+	*(U1+b*4+1)=*(U2+b*4+2)=*(U3+b*4+3)=*(U4+b*4+0)=*(T5+i*4+1)=*(T6+i*4+2)=*(T7+i*4+3)=*(T8+i*4+0)=FFmul09(b);
+	*(U1+b*4+2)=*(U2+b*4+3)=*(U3+b*4+0)=*(U4+b*4+1)=*(T5+i*4+2)=*(T6+i*4+3)=*(T7+i*4+0)=*(T8+i*4+1)=FFmul0d(b);
+	*(U1+b*4+0)=*(U2+b*4+1)=*(U3+b*4+2)=*(U4+b*4+3)=*(T5+i*4+0)=*(T6+i*4+1)=*(T7+i*4+2)=*(T8+i*4+3)=FFmul0e(b);
+    }
 }
-void Init(aes_context *aes, const uchar *key,uint keyLen, constant uchar * initVector){
+void Init(aes_context *aes,global uchar* sbox_buffer, const uchar *key,uint keyLen, constant uchar * initVector){
 
-  aes->CBCMode = true;
-  GenerateTables();
-  uint uKeyLenInuchars;
-  switch(keyLen)
-  {
-    case 128:
-      uKeyLenInuchars = 16;
-      aes->m_uRounds = 10;
-      break;
-    case 192:
-      uKeyLenInuchars = 24;
-      aes->m_uRounds = 12;
-      break;
-    case 256:
-      uKeyLenInuchars = 32;
-      aes->m_uRounds = 14;
-      break;
-  }
+    aes->CBCMode = true;
+    GenerateTables(sbox_buffer);
+    uint uKeyLenInuchars;
+    switch(keyLen)
+    {
+	case 128:
+	    uKeyLenInuchars = 16;
+	    aes->m_uRounds = 10;
+	    break;
+	case 192:
+	    uKeyLenInuchars = 24;
+	    aes->m_uRounds = 12;
+	    break;
+	case 256:
+	    uKeyLenInuchars = 32;
+	    aes->m_uRounds = 14;
+	    break;
+    }
 
-  uchar keyMatrix[_MAX_KEY_COLUMNS][4];
-//  memset(aes->m_expandedKey, 0, 15*4*4);
-  #pragma unroll
-  for(int i = 0; i < 15*4*4; i++)
-    aes->m_initVector[i] =0 ;
-  for(uint i = 0; i < uKeyLenInuchars; i++)
-    keyMatrix[i >> 2][i & 3] = key[i]; 
+    uchar keyMatrix[_MAX_KEY_COLUMNS][4];
+    //  memset(aes->m_expandedKey, 0, 15*4*4);
+#pragma unroll
+    for(int i = 0; i < 15*4*4; i++)
+	aes->m_initVector[i] =0 ;
+    for(uint i = 0; i < uKeyLenInuchars; i++)
+	keyMatrix[i >> 2][i & 3] = key[i]; 
 
-//    memset(aes->m_initVector, 0, sizeof(aes->m_initVector));
-  #pragma unroll
-  for(int i = 0; i < MAX_IV_SIZE; i++)
-      aes->m_initVector[i] = initVector[i];
+    //    memset(aes->m_initVector, 0, sizeof(aes->m_initVector));
+#pragma unroll
+    for(int i = 0; i < MAX_IV_SIZE; i++)
+	aes->m_initVector[i] = initVector[i];
 
-  keySched(aes,keyMatrix);
+    keySched(aes,sbox_buffer, keyMatrix);
 
-  keyEncToDec(aes);
+    keyEncToDec(aes, sbox_buffer);
 }
 
 #define ROL(x,c) rotate((uint)x,(uint)c)
 
 #define ROUNDTAIL(a,b,e,f,i,k,w)  \
-	e += ROL(a,5) + f + k + w[i];  \
-	b = ROL(b,30);
+    e += ROL(a,5) + f + k + w[i];  \
+b = ROL(b,30);
 
 #define F1(b,c,d) (d ^ (b & (c ^ d)))
 #define F2(b,c,d) (b ^ c ^ d)
@@ -346,30 +396,30 @@ void Init(aes_context *aes, const uchar *key,uint keyLen, constant uchar * initV
 
 
 #define LOADSCHEDULE(i, w, block)\
-        w[i] = (block+i*4)[0] << 24 | (block+i*4)[1] << 16 | (block+i*4)[2] << 8 | (block+i*4)[3];
+    w[i] = (block+i*4)[0] << 24 | (block+i*4)[1] << 16 | (block+i*4)[2] << 8 | (block+i*4)[3];
 
 #define SCHEDULE(i, w) \
-        w[i] = ROL((w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16]), 1);
+    w[i] = ROL((w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16]), 1);
 
 #define ROUND0s(a,b,c,d,e,i,w,block) \
-        LOADSCHEDULE(i, w, block)\
-        ROUNDTAIL(a, b, e, F1(b, c, d), i, 0x5A827999, w)
+    LOADSCHEDULE(i, w, block)\
+ROUNDTAIL(a, b, e, F1(b, c, d), i, 0x5A827999, w)
 
 #define ROUND0(a,b,c,d,e,i,w) \
-        SCHEDULE(i, w) \
-        ROUNDTAIL(a, b, e, F1(b, c, d), i, 0x5A827999, w)
+    SCHEDULE(i, w) \
+ROUNDTAIL(a, b, e, F1(b, c, d), i, 0x5A827999, w)
 
 #define ROUND1(a,b,c,d,e,i,w) \
-        SCHEDULE(i, w) \
-        ROUNDTAIL(a, b, e, F2(b, c, d), i, 0x6ED9EBA1, w)
+    SCHEDULE(i, w) \
+ROUNDTAIL(a, b, e, F2(b, c, d), i, 0x6ED9EBA1, w)
 
 #define ROUND2(a,b,c,d,e,i,w) \
-        SCHEDULE(i, w) \
-        ROUNDTAIL(a, b, e, F3(b, c, d), i, 0x8F1BBCDC, w)
+    SCHEDULE(i, w) \
+ROUNDTAIL(a, b, e, F3(b, c, d), i, 0x8F1BBCDC, w)
 
 #define ROUND3(a,b,c,d,e,i,w) \
-        SCHEDULE(i, w) \
-        ROUNDTAIL(a, b, e, F4(b, c, d), i, 0xCA62C1D6, w)
+    SCHEDULE(i, w) \
+ROUNDTAIL(a, b, e, F4(b, c, d), i, 0xCA62C1D6, w)
 
 void inline sha1(const uchar* msg, uint len, uchar* output){
     uint h0 = 0x67452301;
@@ -377,407 +427,425 @@ void inline sha1(const uchar* msg, uint len, uchar* output){
     uint h2 = 0x98BADCFE;
     uint h3 = 0x10325476;
     uint h4 = 0xC3D2E1F0;
-    
+
     uint chunks = ((len+9)/64)+1;
     uint padSpace = 64-(len%64);
     uint padInChunk;
     bool longPad;
-    
+
     uchar msg_pad[64];
     uint w[80] = {0};
-    
+
     if(padSpace < 9){
-        padInChunk = chunks-2;
-        longPad = true;
+	padInChunk = chunks-2;
+	longPad = true;
     }else{
-        padInChunk = chunks-1;
-        longPad = false;
+	padInChunk = chunks-1;
+	longPad = false;
     }
-    
+
     for(uint chunk = 0;chunk<chunks;chunk++){
-        
-        if(chunk < padInChunk){
+
+	if(chunk < padInChunk){
 	    // ::memcpy(msg_pad,msg+chunk*64,64);
-	    #pragma unroll
+#pragma unroll
 	    for (int i = 0; i < 64; i++)
 		msg_pad[i]= (msg+chunk*64)[i];
-        }else if(chunk == padInChunk){
-            uint padStart = len%64;
-            //memcpy(msg_pad,msg+chunk*64,padStart);
-	    #pragma unroll
+	}else if(chunk == padInChunk){
+	    uint padStart = len%64;
+	    //memcpy(msg_pad,msg+chunk*64,padStart);
+#pragma unroll
 	    for (int i = 0; i < padStart; i++)
 		msg_pad[i]= (msg+chunk*64)[i];
-            msg_pad[padStart] = 0x80;
-            if(longPad){
-                // pad in last two chunks
-                for(uint i = padStart+1;i<64;i++){
-                    msg_pad[i] = 0;
-                }
-            }else{
-                // pad in last chunk
-                for(uint i = padStart+1;i<64-4;i++){
-                    msg_pad[i] = 0;
-                }
-                ulong bit_len = len*8;
-                msg_pad[60] = (bit_len >> 24) & 0xFF;
-                msg_pad[61] = (bit_len >> 16) & 0xFF;
-                msg_pad[62] = (bit_len >> 8) & 0xFF;
-                msg_pad[63] = bit_len & 0xFF;
-            }
-        }else{
-            for(uint i = 0;i<64-4;i++){
-                    msg_pad[i] = 0;
-            }
-            ulong bit_len = len*8;
-            msg_pad[60] = (bit_len >> 24) & 0xFF;
-            msg_pad[61] = (bit_len >> 16) & 0xFF;
-            msg_pad[62] = (bit_len >> 8) & 0xFF;
-            msg_pad[63] = bit_len & 0xFF;
-        }
-        
-        uint a = h0;
-        uint b = h1;
-        uint c = h2;
-        uint d = h3;
-        uint e = h4;
+	    msg_pad[padStart] = 0x80;
+	    if(longPad){
+		// pad in last two chunks
+		for(uint i = padStart+1;i<64;i++){
+		    msg_pad[i] = 0;
+		}
+	    }else{
+		// pad in last chunk
+		for(uint i = padStart+1;i<64-4;i++){
+		    msg_pad[i] = 0;
+		}
+		ulong bit_len = len*8;
+		msg_pad[60] = (bit_len >> 24) & 0xFF;
+		msg_pad[61] = (bit_len >> 16) & 0xFF;
+		msg_pad[62] = (bit_len >> 8) & 0xFF;
+		msg_pad[63] = bit_len & 0xFF;
+	    }
+	}else{
+	    for(uint i = 0;i<64-4;i++){
+		msg_pad[i] = 0;
+	    }
+	    ulong bit_len = len*8;
+	    msg_pad[60] = (bit_len >> 24) & 0xFF;
+	    msg_pad[61] = (bit_len >> 16) & 0xFF;
+	    msg_pad[62] = (bit_len >> 8) & 0xFF;
+	    msg_pad[63] = bit_len & 0xFF;
+	}
 
-        
+	uint a = h0;
+	uint b = h1;
+	uint c = h2;
+	uint d = h3;
+	uint e = h4;
+
+
 	ROUND0s(a, b, c, d, e,  0, w, msg_pad)
-	ROUND0s(e, a, b, c, d,  1, w, msg_pad)
-	ROUND0s(d, e, a, b, c,  2, w, msg_pad)
-	ROUND0s(c, d, e, a, b,  3, w, msg_pad)
-	ROUND0s(b, c, d, e, a,  4, w, msg_pad)
-	ROUND0s(a, b, c, d, e,  5, w, msg_pad)
-	ROUND0s(e, a, b, c, d,  6, w, msg_pad)
-	ROUND0s(d, e, a, b, c,  7, w, msg_pad)
-	ROUND0s(c, d, e, a, b,  8, w, msg_pad)
-	ROUND0s(b, c, d, e, a,  9, w, msg_pad)
-	ROUND0s(a, b, c, d, e, 10, w, msg_pad)
-	ROUND0s(e, a, b, c, d, 11, w, msg_pad)
-	ROUND0s(d, e, a, b, c, 12, w, msg_pad)
-	ROUND0s(c, d, e, a, b, 13, w, msg_pad)
-	ROUND0s(b, c, d, e, a, 14, w, msg_pad)
-	ROUND0s(a, b, c, d, e, 15, w, msg_pad)
-	ROUND0(e, a, b, c, d, 16, w)
-	ROUND0(d, e, a, b, c, 17, w)
-	ROUND0(c, d, e, a, b, 18, w)
-	ROUND0(b, c, d, e, a, 19, w)
-	ROUND1(a, b, c, d, e, 20, w)
-	ROUND1(e, a, b, c, d, 21, w)
-	ROUND1(d, e, a, b, c, 22, w)
-	ROUND1(c, d, e, a, b, 23, w)
-	ROUND1(b, c, d, e, a, 24, w)
-	ROUND1(a, b, c, d, e, 25, w)
-	ROUND1(e, a, b, c, d, 26, w)
-	ROUND1(d, e, a, b, c, 27, w)
-	ROUND1(c, d, e, a, b, 28, w)
-	ROUND1(b, c, d, e, a, 29, w)
-	ROUND1(a, b, c, d, e, 30, w)
-	ROUND1(e, a, b, c, d, 31, w)
-	ROUND1(d, e, a, b, c, 32, w)
-	ROUND1(c, d, e, a, b, 33, w)
-	ROUND1(b, c, d, e, a, 34, w)
-	ROUND1(a, b, c, d, e, 35, w)
-	ROUND1(e, a, b, c, d, 36, w)
-	ROUND1(d, e, a, b, c, 37, w)
-	ROUND1(c, d, e, a, b, 38, w)
-	ROUND1(b, c, d, e, a, 39, w)
-	ROUND2(a, b, c, d, e, 40, w)
-	ROUND2(e, a, b, c, d, 41, w)
-	ROUND2(d, e, a, b, c, 42, w)
-	ROUND2(c, d, e, a, b, 43, w)
-	ROUND2(b, c, d, e, a, 44, w)
-	ROUND2(a, b, c, d, e, 45, w)
-	ROUND2(e, a, b, c, d, 46, w)
-	ROUND2(d, e, a, b, c, 47, w)
-	ROUND2(c, d, e, a, b, 48, w)
-	ROUND2(b, c, d, e, a, 49, w)
-	ROUND2(a, b, c, d, e, 50, w)
-	ROUND2(e, a, b, c, d, 51, w)
-	ROUND2(d, e, a, b, c, 52, w)
-	ROUND2(c, d, e, a, b, 53, w)
-	ROUND2(b, c, d, e, a, 54, w)
-	ROUND2(a, b, c, d, e, 55, w)
-	ROUND2(e, a, b, c, d, 56, w)
-	ROUND2(d, e, a, b, c, 57, w)
-	ROUND2(c, d, e, a, b, 58, w)
-	ROUND2(b, c, d, e, a, 59, w)
-	ROUND3(a, b, c, d, e, 60, w)
-	ROUND3(e, a, b, c, d, 61, w)
-	ROUND3(d, e, a, b, c, 62, w)
-	ROUND3(c, d, e, a, b, 63, w)
-	ROUND3(b, c, d, e, a, 64, w)
-	ROUND3(a, b, c, d, e, 65, w)
-	ROUND3(e, a, b, c, d, 66, w)
-	ROUND3(d, e, a, b, c, 67, w)
-	ROUND3(c, d, e, a, b, 68, w)
-	ROUND3(b, c, d, e, a, 69, w)
-	ROUND3(a, b, c, d, e, 70, w)
-	ROUND3(e, a, b, c, d, 71, w)
-	ROUND3(d, e, a, b, c, 72, w)
-	ROUND3(c, d, e, a, b, 73, w)
-	ROUND3(b, c, d, e, a, 74, w)
-	ROUND3(a, b, c, d, e, 75, w)
-	ROUND3(e, a, b, c, d, 76, w)
-	ROUND3(d, e, a, b, c, 77, w)
-	ROUND3(c, d, e, a, b, 78, w)
-	ROUND3(b, c, d, e, a, 79, w)
-        
-        h0 += a;
-        h1 += b;
-        h2 += c;
-        h3 += d;
-        h4 += e;
+	    ROUND0s(e, a, b, c, d,  1, w, msg_pad)
+	    ROUND0s(d, e, a, b, c,  2, w, msg_pad)
+	    ROUND0s(c, d, e, a, b,  3, w, msg_pad)
+	    ROUND0s(b, c, d, e, a,  4, w, msg_pad)
+	    ROUND0s(a, b, c, d, e,  5, w, msg_pad)
+	    ROUND0s(e, a, b, c, d,  6, w, msg_pad)
+	    ROUND0s(d, e, a, b, c,  7, w, msg_pad)
+	    ROUND0s(c, d, e, a, b,  8, w, msg_pad)
+	    ROUND0s(b, c, d, e, a,  9, w, msg_pad)
+	    ROUND0s(a, b, c, d, e, 10, w, msg_pad)
+	    ROUND0s(e, a, b, c, d, 11, w, msg_pad)
+	    ROUND0s(d, e, a, b, c, 12, w, msg_pad)
+	    ROUND0s(c, d, e, a, b, 13, w, msg_pad)
+	    ROUND0s(b, c, d, e, a, 14, w, msg_pad)
+	    ROUND0s(a, b, c, d, e, 15, w, msg_pad)
+	    ROUND0(e, a, b, c, d, 16, w)
+	    ROUND0(d, e, a, b, c, 17, w)
+	    ROUND0(c, d, e, a, b, 18, w)
+	    ROUND0(b, c, d, e, a, 19, w)
+	    ROUND1(a, b, c, d, e, 20, w)
+	    ROUND1(e, a, b, c, d, 21, w)
+	    ROUND1(d, e, a, b, c, 22, w)
+	    ROUND1(c, d, e, a, b, 23, w)
+	    ROUND1(b, c, d, e, a, 24, w)
+	    ROUND1(a, b, c, d, e, 25, w)
+	    ROUND1(e, a, b, c, d, 26, w)
+	    ROUND1(d, e, a, b, c, 27, w)
+	    ROUND1(c, d, e, a, b, 28, w)
+	    ROUND1(b, c, d, e, a, 29, w)
+	    ROUND1(a, b, c, d, e, 30, w)
+	    ROUND1(e, a, b, c, d, 31, w)
+	    ROUND1(d, e, a, b, c, 32, w)
+	    ROUND1(c, d, e, a, b, 33, w)
+	    ROUND1(b, c, d, e, a, 34, w)
+	    ROUND1(a, b, c, d, e, 35, w)
+	    ROUND1(e, a, b, c, d, 36, w)
+	    ROUND1(d, e, a, b, c, 37, w)
+	    ROUND1(c, d, e, a, b, 38, w)
+	    ROUND1(b, c, d, e, a, 39, w)
+	    ROUND2(a, b, c, d, e, 40, w)
+	    ROUND2(e, a, b, c, d, 41, w)
+	    ROUND2(d, e, a, b, c, 42, w)
+	    ROUND2(c, d, e, a, b, 43, w)
+	    ROUND2(b, c, d, e, a, 44, w)
+	    ROUND2(a, b, c, d, e, 45, w)
+	    ROUND2(e, a, b, c, d, 46, w)
+	    ROUND2(d, e, a, b, c, 47, w)
+	    ROUND2(c, d, e, a, b, 48, w)
+	    ROUND2(b, c, d, e, a, 49, w)
+	    ROUND2(a, b, c, d, e, 50, w)
+	    ROUND2(e, a, b, c, d, 51, w)
+	    ROUND2(d, e, a, b, c, 52, w)
+	    ROUND2(c, d, e, a, b, 53, w)
+	    ROUND2(b, c, d, e, a, 54, w)
+	    ROUND2(a, b, c, d, e, 55, w)
+	    ROUND2(e, a, b, c, d, 56, w)
+	    ROUND2(d, e, a, b, c, 57, w)
+	    ROUND2(c, d, e, a, b, 58, w)
+	    ROUND2(b, c, d, e, a, 59, w)
+	    ROUND3(a, b, c, d, e, 60, w)
+	    ROUND3(e, a, b, c, d, 61, w)
+	    ROUND3(d, e, a, b, c, 62, w)
+	    ROUND3(c, d, e, a, b, 63, w)
+	    ROUND3(b, c, d, e, a, 64, w)
+	    ROUND3(a, b, c, d, e, 65, w)
+	    ROUND3(e, a, b, c, d, 66, w)
+	    ROUND3(d, e, a, b, c, 67, w)
+	    ROUND3(c, d, e, a, b, 68, w)
+	    ROUND3(b, c, d, e, a, 69, w)
+	    ROUND3(a, b, c, d, e, 70, w)
+	    ROUND3(e, a, b, c, d, 71, w)
+	    ROUND3(d, e, a, b, c, 72, w)
+	    ROUND3(c, d, e, a, b, 73, w)
+	    ROUND3(b, c, d, e, a, 74, w)
+	    ROUND3(a, b, c, d, e, 75, w)
+	    ROUND3(e, a, b, c, d, 76, w)
+	    ROUND3(d, e, a, b, c, 77, w)
+	    ROUND3(c, d, e, a, b, 78, w)
+	    ROUND3(b, c, d, e, a, 79, w)
+
+	    h0 += a;
+	h1 += b;
+	h2 += c;
+	h3 += d;
+	h4 += e;
     }
-    
+
     output[0] = h0 >> 24;
     output[1] = (h0 >> 16) & 0xFF;
     output[2] = (h0 >> 8) & 0xFF;
     output[3] = h0 & 0xFF;
-    
+
     output[4] = h1 >> 24;
     output[5] = (h1 >> 16) & 0xFF;
     output[6] = (h1 >> 8) & 0xFF;
     output[7] = h1 & 0xFF;
-    
+
     output[8] = h2 >> 24;
     output[9] = (h2 >> 16) & 0xFF;
     output[10] = (h2 >> 8) & 0xFF;
     output[11] = h2 & 0xFF;
-    
+
     output[12] = h3 >> 24;
     output[13] = (h3 >> 16) & 0xFF;
     output[14] = (h3 >> 8) & 0xFF;
     output[15] = h3 & 0xFF;
-    
+
     output[16] = h4 >> 24;
     output[17] = (h4 >> 16) & 0xFF;
     output[18] = (h4 >> 8) & 0xFF;
     output[19] = h4 & 0xFF;
-    
-    
+
+
 }
 
-void inline sha1_loc(const global uchar* msg, uint len, uchar* output){
-    
+void inline sha1_global(const global uchar* msg, uint len, uchar* output){
+
     uint h0 = 0x67452301;
     uint h1 = 0xEFCDAB89;
     uint h2 = 0x98BADCFE;
     uint h3 = 0x10325476;
     uint h4 = 0xC3D2E1F0;
-    
+
     uint chunks = ((len+9)/64)+1;
     uint padSpace = 64-(len%64);
     uint padInChunk;
     bool longPad;
-    
+
     uchar msg_pad[64];
     uint w[80] = {0};
-    
+
     if(padSpace < 9){
-        padInChunk = chunks-2;
-        longPad = true;
+	padInChunk = chunks-2;
+	longPad = true;
     }else{
-        padInChunk = chunks-1;
-        longPad = false;
+	padInChunk = chunks-1;
+	longPad = false;
     }
-    
+
     for(uint chunk = 0;chunk<chunks;chunk++){
-        
-        if(chunk < padInChunk){
+
+	if(chunk < padInChunk){
 	    // ::memcpy(msg_pad,msg+chunk*64,64);
-	    #pragma unroll
+#pragma unroll
 	    for (int i = 0; i < 64; i++)
 		msg_pad[i]= (msg+chunk*64)[i];
-        }else if(chunk == padInChunk){
-            uint padStart = len%64;
-            //memcpy(msg_pad,msg+chunk*64,padStart);
-	    #pragma unroll
+	}else if(chunk == padInChunk){
+	    uint padStart = len%64;
+	    //memcpy(msg_pad,msg+chunk*64,padStart);
+#pragma unroll
 	    for (int i= 0; i < padStart; i++)
 		msg_pad[i]= (msg+chunk*64)[i];
-            msg_pad[padStart] = 0x80;
-            if(longPad){
-                // pad in last two chunks
-                for(uint i = padStart+1;i<64;i++){
-                    msg_pad[i] = 0;
-                }
-            }else{
-                // pad in last chunk
-                for(uint i = padStart+1;i<64-4;i++){
-                    msg_pad[i] = 0;
-                }
-                ulong bit_len = len*8;
-                msg_pad[60] = (bit_len >> 24) & 0xFF;
-                msg_pad[61] = (bit_len >> 16) & 0xFF;
-                msg_pad[62] = (bit_len >> 8) & 0xFF;
-                msg_pad[63] = bit_len & 0xFF;
-            }
-        }else{
-            for(uint i = 0;i<64-4;i++){
-                    msg_pad[i] = 0;
-            }
-            ulong bit_len = len*8;
-            msg_pad[60] = (bit_len >> 24) & 0xFF;
-            msg_pad[61] = (bit_len >> 16) & 0xFF;
-            msg_pad[62] = (bit_len >> 8) & 0xFF;
-            msg_pad[63] = bit_len & 0xFF;
-        }
-        
-        uint a = h0;
-        uint b = h1;
-        uint c = h2;
-        uint d = h3;
-        uint e = h4;
+	    msg_pad[padStart] = 0x80;
+	    if(longPad){
+		// pad in last two chunks
+		for(uint i = padStart+1;i<64;i++){
+		    msg_pad[i] = 0;
+		}
+	    }else{
+		// pad in last chunk
+		for(uint i = padStart+1;i<64-4;i++){
+		    msg_pad[i] = 0;
+		}
+		ulong bit_len = len*8;
+		msg_pad[60] = (bit_len >> 24) & 0xFF;
+		msg_pad[61] = (bit_len >> 16) & 0xFF;
+		msg_pad[62] = (bit_len >> 8) & 0xFF;
+		msg_pad[63] = bit_len & 0xFF;
+	    }
+	}else{
+	    for(uint i = 0;i<64-4;i++){
+		msg_pad[i] = 0;
+	    }
+	    ulong bit_len = len*8;
+	    msg_pad[60] = (bit_len >> 24) & 0xFF;
+	    msg_pad[61] = (bit_len >> 16) & 0xFF;
+	    msg_pad[62] = (bit_len >> 8) & 0xFF;
+	    msg_pad[63] = bit_len & 0xFF;
+	}
 
-        
+	uint a = h0;
+	uint b = h1;
+	uint c = h2;
+	uint d = h3;
+	uint e = h4;
+
+
 	ROUND0s(a, b, c, d, e,  0, w, msg_pad)
-	ROUND0s(e, a, b, c, d,  1, w, msg_pad)
-	ROUND0s(d, e, a, b, c,  2, w, msg_pad)
-	ROUND0s(c, d, e, a, b,  3, w, msg_pad)
-	ROUND0s(b, c, d, e, a,  4, w, msg_pad)
-	ROUND0s(a, b, c, d, e,  5, w, msg_pad)
-	ROUND0s(e, a, b, c, d,  6, w, msg_pad)
-	ROUND0s(d, e, a, b, c,  7, w, msg_pad)
-	ROUND0s(c, d, e, a, b,  8, w, msg_pad)
-	ROUND0s(b, c, d, e, a,  9, w, msg_pad)
-	ROUND0s(a, b, c, d, e, 10, w, msg_pad)
-	ROUND0s(e, a, b, c, d, 11, w, msg_pad)
-	ROUND0s(d, e, a, b, c, 12, w, msg_pad)
-	ROUND0s(c, d, e, a, b, 13, w, msg_pad)
-	ROUND0s(b, c, d, e, a, 14, w, msg_pad)
-	ROUND0s(a, b, c, d, e, 15, w, msg_pad)
-	ROUND0(e, a, b, c, d, 16, w)
-	ROUND0(d, e, a, b, c, 17, w)
-	ROUND0(c, d, e, a, b, 18, w)
-	ROUND0(b, c, d, e, a, 19, w)
-	ROUND1(a, b, c, d, e, 20, w)
-	ROUND1(e, a, b, c, d, 21, w)
-	ROUND1(d, e, a, b, c, 22, w)
-	ROUND1(c, d, e, a, b, 23, w)
-	ROUND1(b, c, d, e, a, 24, w)
-	ROUND1(a, b, c, d, e, 25, w)
-	ROUND1(e, a, b, c, d, 26, w)
-	ROUND1(d, e, a, b, c, 27, w)
-	ROUND1(c, d, e, a, b, 28, w)
-	ROUND1(b, c, d, e, a, 29, w)
-	ROUND1(a, b, c, d, e, 30, w)
-	ROUND1(e, a, b, c, d, 31, w)
-	ROUND1(d, e, a, b, c, 32, w)
-	ROUND1(c, d, e, a, b, 33, w)
-	ROUND1(b, c, d, e, a, 34, w)
-	ROUND1(a, b, c, d, e, 35, w)
-	ROUND1(e, a, b, c, d, 36, w)
-	ROUND1(d, e, a, b, c, 37, w)
-	ROUND1(c, d, e, a, b, 38, w)
-	ROUND1(b, c, d, e, a, 39, w)
-	ROUND2(a, b, c, d, e, 40, w)
-	ROUND2(e, a, b, c, d, 41, w)
-	ROUND2(d, e, a, b, c, 42, w)
-	ROUND2(c, d, e, a, b, 43, w)
-	ROUND2(b, c, d, e, a, 44, w)
-	ROUND2(a, b, c, d, e, 45, w)
-	ROUND2(e, a, b, c, d, 46, w)
-	ROUND2(d, e, a, b, c, 47, w)
-	ROUND2(c, d, e, a, b, 48, w)
-	ROUND2(b, c, d, e, a, 49, w)
-	ROUND2(a, b, c, d, e, 50, w)
-	ROUND2(e, a, b, c, d, 51, w)
-	ROUND2(d, e, a, b, c, 52, w)
-	ROUND2(c, d, e, a, b, 53, w)
-	ROUND2(b, c, d, e, a, 54, w)
-	ROUND2(a, b, c, d, e, 55, w)
-	ROUND2(e, a, b, c, d, 56, w)
-	ROUND2(d, e, a, b, c, 57, w)
-	ROUND2(c, d, e, a, b, 58, w)
-	ROUND2(b, c, d, e, a, 59, w)
-	ROUND3(a, b, c, d, e, 60, w)
-	ROUND3(e, a, b, c, d, 61, w)
-	ROUND3(d, e, a, b, c, 62, w)
-	ROUND3(c, d, e, a, b, 63, w)
-	ROUND3(b, c, d, e, a, 64, w)
-	ROUND3(a, b, c, d, e, 65, w)
-	ROUND3(e, a, b, c, d, 66, w)
-	ROUND3(d, e, a, b, c, 67, w)
-	ROUND3(c, d, e, a, b, 68, w)
-	ROUND3(b, c, d, e, a, 69, w)
-	ROUND3(a, b, c, d, e, 70, w)
-	ROUND3(e, a, b, c, d, 71, w)
-	ROUND3(d, e, a, b, c, 72, w)
-	ROUND3(c, d, e, a, b, 73, w)
-	ROUND3(b, c, d, e, a, 74, w)
-	ROUND3(a, b, c, d, e, 75, w)
-	ROUND3(e, a, b, c, d, 76, w)
-	ROUND3(d, e, a, b, c, 77, w)
-	ROUND3(c, d, e, a, b, 78, w)
-	ROUND3(b, c, d, e, a, 79, w)
-        
-        h0 += a;
-        h1 += b;
-        h2 += c;
-        h3 += d;
-        h4 += e;
+	    ROUND0s(e, a, b, c, d,  1, w, msg_pad)
+	    ROUND0s(d, e, a, b, c,  2, w, msg_pad)
+	    ROUND0s(c, d, e, a, b,  3, w, msg_pad)
+	    ROUND0s(b, c, d, e, a,  4, w, msg_pad)
+	    ROUND0s(a, b, c, d, e,  5, w, msg_pad)
+	    ROUND0s(e, a, b, c, d,  6, w, msg_pad)
+	    ROUND0s(d, e, a, b, c,  7, w, msg_pad)
+	    ROUND0s(c, d, e, a, b,  8, w, msg_pad)
+	    ROUND0s(b, c, d, e, a,  9, w, msg_pad)
+	    ROUND0s(a, b, c, d, e, 10, w, msg_pad)
+	    ROUND0s(e, a, b, c, d, 11, w, msg_pad)
+	    ROUND0s(d, e, a, b, c, 12, w, msg_pad)
+	    ROUND0s(c, d, e, a, b, 13, w, msg_pad)
+	    ROUND0s(b, c, d, e, a, 14, w, msg_pad)
+	    ROUND0s(a, b, c, d, e, 15, w, msg_pad)
+	    ROUND0(e, a, b, c, d, 16, w)
+	    ROUND0(d, e, a, b, c, 17, w)
+	    ROUND0(c, d, e, a, b, 18, w)
+	    ROUND0(b, c, d, e, a, 19, w)
+	    ROUND1(a, b, c, d, e, 20, w)
+	    ROUND1(e, a, b, c, d, 21, w)
+	    ROUND1(d, e, a, b, c, 22, w)
+	    ROUND1(c, d, e, a, b, 23, w)
+	    ROUND1(b, c, d, e, a, 24, w)
+	    ROUND1(a, b, c, d, e, 25, w)
+	    ROUND1(e, a, b, c, d, 26, w)
+	    ROUND1(d, e, a, b, c, 27, w)
+	    ROUND1(c, d, e, a, b, 28, w)
+	    ROUND1(b, c, d, e, a, 29, w)
+	    ROUND1(a, b, c, d, e, 30, w)
+	    ROUND1(e, a, b, c, d, 31, w)
+	    ROUND1(d, e, a, b, c, 32, w)
+	    ROUND1(c, d, e, a, b, 33, w)
+	    ROUND1(b, c, d, e, a, 34, w)
+	    ROUND1(a, b, c, d, e, 35, w)
+	    ROUND1(e, a, b, c, d, 36, w)
+	    ROUND1(d, e, a, b, c, 37, w)
+	    ROUND1(c, d, e, a, b, 38, w)
+	    ROUND1(b, c, d, e, a, 39, w)
+	    ROUND2(a, b, c, d, e, 40, w)
+	    ROUND2(e, a, b, c, d, 41, w)
+	    ROUND2(d, e, a, b, c, 42, w)
+	    ROUND2(c, d, e, a, b, 43, w)
+	    ROUND2(b, c, d, e, a, 44, w)
+	    ROUND2(a, b, c, d, e, 45, w)
+	    ROUND2(e, a, b, c, d, 46, w)
+	    ROUND2(d, e, a, b, c, 47, w)
+	    ROUND2(c, d, e, a, b, 48, w)
+	    ROUND2(b, c, d, e, a, 49, w)
+	    ROUND2(a, b, c, d, e, 50, w)
+	    ROUND2(e, a, b, c, d, 51, w)
+	    ROUND2(d, e, a, b, c, 52, w)
+	    ROUND2(c, d, e, a, b, 53, w)
+	    ROUND2(b, c, d, e, a, 54, w)
+	    ROUND2(a, b, c, d, e, 55, w)
+	    ROUND2(e, a, b, c, d, 56, w)
+	    ROUND2(d, e, a, b, c, 57, w)
+	    ROUND2(c, d, e, a, b, 58, w)
+	    ROUND2(b, c, d, e, a, 59, w)
+	    ROUND3(a, b, c, d, e, 60, w)
+	    ROUND3(e, a, b, c, d, 61, w)
+	    ROUND3(d, e, a, b, c, 62, w)
+	    ROUND3(c, d, e, a, b, 63, w)
+	    ROUND3(b, c, d, e, a, 64, w)
+	    ROUND3(a, b, c, d, e, 65, w)
+	    ROUND3(e, a, b, c, d, 66, w)
+	    ROUND3(d, e, a, b, c, 67, w)
+	    ROUND3(c, d, e, a, b, 68, w)
+	    ROUND3(b, c, d, e, a, 69, w)
+	    ROUND3(a, b, c, d, e, 70, w)
+	    ROUND3(e, a, b, c, d, 71, w)
+	    ROUND3(d, e, a, b, c, 72, w)
+	    ROUND3(c, d, e, a, b, 73, w)
+	    ROUND3(b, c, d, e, a, 74, w)
+	    ROUND3(a, b, c, d, e, 75, w)
+	    ROUND3(e, a, b, c, d, 76, w)
+	    ROUND3(d, e, a, b, c, 77, w)
+	    ROUND3(c, d, e, a, b, 78, w)
+	    ROUND3(b, c, d, e, a, 79, w)
+
+	    h0 += a;
+	h1 += b;
+	h2 += c;
+	h3 += d;
+	h4 += e;
     }
-    
+
     output[0] = h0 >> 24;
     output[1] = (h0 >> 16) & 0xFF;
     output[2] = (h0 >> 8) & 0xFF;
     output[3] = h0 & 0xFF;
-    
+
     output[4] = h1 >> 24;
     output[5] = (h1 >> 16) & 0xFF;
     output[6] = (h1 >> 8) & 0xFF;
     output[7] = h1 & 0xFF;
-    
+
     output[8] = h2 >> 24;
     output[9] = (h2 >> 16) & 0xFF;
     output[10] = (h2 >> 8) & 0xFF;
     output[11] = h2 & 0xFF;
-    
+
     output[12] = h3 >> 24;
     output[13] = (h3 >> 16) & 0xFF;
     output[14] = (h3 >> 8) & 0xFF;
     output[15] = h3 & 0xFF;
-    
+
     output[16] = h4 >> 24;
     output[17] = (h4 >> 16) & 0xFF;
     output[18] = (h4 >> 8) & 0xFF;
     output[19] = h4 & 0xFF;
-    
+
 }
 void derive_key(const uchar* hash, uchar key, uchar* output){
-   
+
     uchar key_pad[64];
-    #pragma unroll
+#pragma unroll
     for (int i=0; i < 64; i++)
 	key_pad[i] = key;
 
-    #pragma unroll
+#pragma unroll
     for(uchar i = 0;i<20; i++)
-        key_pad[i] ^= hash[i];
+	key_pad[i] ^= hash[i];
 
     sha1(key_pad,64,output);
 }
 
-void derive(const uchar* pass, uint klen, uchar* output){
+void derive_private(const uchar* pass, uint klen, uchar* output){
 
     uchar passHash[20];
     uchar temp[40];
-   
-    #pragma unroll
+
+#pragma unroll
     for (int i=0; i < 20; i++)
 	passHash[i] = 0x00;
-    
+
     sha1(pass,klen,passHash);
     derive_key((uchar*)passHash, 0x36 , (uchar*)temp);
     derive_key((uchar*)passHash, 0x5c, (uchar*)(temp+20));
-    
-    #pragma unroll
+
+#pragma unroll
+    for (int i=0; i < 32; i++)
+	output[i] = temp[i];
+
+}
+void derive_global(const global uchar* pass, uint klen, uchar* output){
+
+    uchar passHash[20];
+    uchar temp[40];
+
+#pragma unroll
+    for (int i=0; i < 20; i++)
+	passHash[i] = 0x00;
+
+    sha1_global(pass,klen,passHash);
+    derive_key((uchar*)passHash, 0x36 , (uchar*)temp);
+    derive_key((uchar*)passHash, 0x5c, (uchar*)(temp+20));
+
+#pragma unroll
     for (int i=0; i < 32; i++)
 	output[i] = temp[i];
 
 }
 
-static uint crc32_tab[] = {
+static constant uint crc32_tab[] = {
     0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f,
     0xe963a535, 0x9e6495a3, 0x0edb8832, 0x79dcb8a4, 0xe0d5e91e, 0x97d2d988,
     0x09b64c2b, 0x7eb17cbd, 0xe7b82d07, 0x90bf1d91, 0x1db71064, 0x6ab020f2,
@@ -822,9 +890,9 @@ static uint crc32_tab[] = {
     0x54de5729, 0x23d967bf, 0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94,
     0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
 };
-uint crc32(uint crc, uchar *buf, uchar size)
+uint crc32(uint crc, global uchar *buf, uchar size)
 {
-    const uchar *p;
+    const global uchar *p;
     p = buf;
     crc = crc ^ ~0U;
     while (size--)
@@ -839,30 +907,54 @@ kernel void zip_staes_kernel( \
 	global uint *found_vector,\
 	global uchar* erdData,\
 	global uchar* encData,\
+	global uchar* g_buffer,\
+	global uchar* sbox_buffer,\
 	constant uchar* iv,\
 	ushort klen,\
 	ushort erdSize,\
 	ushort encSize\
 	){
-    
+
     int id = get_global_id(0);
     int lid = get_global_id(0);
-    uchar tempKey[1024]; 
-    uchar rdData[512];
-    uchar vData[512];
+    ulong size = 2*erdSize+encSize;
+    global uchar *tempKey = g_buffer+(id*size); 
+    global uchar *rdData = g_buffer+(id*size+erdSize);
+    global uchar *vData = g_buffer+(id*size+2*erdSize);
+    global uchar *sbox = sbox_buffer+(id*TOTAL_SBOX_SIZE);
     uchar my_pass_len = passwords[id*pass_len];
     uchar pass_buffer[32];
     uchar key[32];
     for(int i = 0;i<my_pass_len;i++){
-        pass_buffer[i] = passwords[id*pass_len+1+i];
+	pass_buffer[i] = passwords[id*pass_len+1+i];
     }
 
-    derive(pass_buffer, my_pass_len, key);
-    aes_context aes; 
-    Init(&aes, key, klen, iv);
+    if (lid == 0 && id == 0){
+	printf("\nIV : %c \n",0);
+	#pragma unroll
+	for (int i=0; i<16; i++)
+	    printf ("%x ", iv[i]);
+    }
+    derive_private(pass_buffer, my_pass_len, key);
 
-    blockDecrypt(&aes, erdData, erdSize, rdData);
-    
+    if (lid == 0 && id == 0){
+	printf("\nkey1: %c \n",pass_buffer[0]);
+	#pragma unroll
+	for (int i=0; i<32; i++)
+	    printf ("%x ", key[i]);
+    }
+    aes_context aes;
+    Init(&aes,sbox, key, klen, iv);
+
+    blockDecrypt(&aes,sbox, erdData, erdSize, rdData);
+
+    if (lid == 0 && id == 0){
+	printf("\nrdData: %c \n", 1);
+	#pragma unroll
+	for (int i=0; i<erdSize; i++)
+	    printf ("%x ", rdData[i]);
+    }
+
     #pragma unroll
     for (int i=0; i<16; i++)
 	tempKey[i] = iv[i];
@@ -871,35 +963,56 @@ kernel void zip_staes_kernel( \
     for (int i=0; i<erdSize-16; i++)
 	tempKey[i+16] = rdData[i];
 
-    derive(tempKey, erdSize, key);   
-    
-    Init(&aes, key, klen, iv);
+    derive_global(tempKey, erdSize, key);   
+    if (lid == 0 && id == 0){
+	printf("\nkey2: %c \n",pass_buffer[0]);
+	#pragma unroll
+	for (int i=0; i<32; i++)
+	    printf ("%x ", key[i]);
+    }
 
-    blockDecrypt(&aes, encData, encSize, vData);
-    
+    Init(&aes, sbox, key, klen, iv);
+
+    blockDecrypt(&aes, sbox, encData, encSize, vData);
+
+    if (lid == 0 && id == 0){
+
+	printf("\nvData: %c \n ",1);
+	#pragma unroll
+	for (int i=0; i<encSize; i++)
+	    printf ("%x ", vData[i]);
+
+	printf("\nerdData: %c \n",2);
+	#pragma unroll
+	for (int i=0; i<erdSize; i++)
+	    printf ("%x ", erdData[i]);
+
+	printf("\nencData: %c \n",2);
+	#pragma unroll
+	for (int i=0; i<encSize; i++)
+	    printf ("%x ", encData[i]);
+    }
     uint crc;
 
     crc = vData[encSize-1];
     crc = (crc << 8) ^ vData[encSize-2];
     crc = (crc << 8) ^ vData[encSize-3];
     crc = (crc << 8) ^ vData[encSize-4];
-    
-    
+
+
     uint crc3 = crc32(0, vData, encSize-4); 
     /*
-    printf("heslo: ");
-    for (int i = 0; i < my_pass_len; i++)
-	printf("%c", pass_buffer[i]);
-    printf(" lid: %d gid: %d crc: %u crc3: %u encs: %u\n", lid, id, crc, crc3, encSize);
-    */
+       printf("heslo: ");
+       for (int i = 0; i < my_pass_len; i++)
+       printf("%c", pass_buffer[i]);
+       printf(" lid: %d gid: %d crc: %u crc3: %u encs: %u\n", lid, id, crc, crc3, encSize);
+       */
     if (crc != crc3){
-        return;
+	return;
     }
-    printf("prosel jsem");
     *found_flag = 1;
     uint big_pos = id/32;
     uint small_pos = id%32;
     uint val = 0x80000000 >> small_pos;
     atomic_or(found_vector+big_pos,val);
-    
 }

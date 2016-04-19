@@ -210,7 +210,7 @@ bool GPUCracker::loadKernel(std::string& filename, std::string& kernelName, cl::
         }
 
         
-        if(program->build(devices,"-g")!=CL_SUCCESS){
+        if(program->build(devices)!=CL_SUCCESS){
             std::cerr<<" Error building: \n"<<(*program).getBuildInfo<CL_PROGRAM_BUILD_LOG>(device)<< std::endl;
             *kernel = NULL;
             return false;
@@ -231,7 +231,7 @@ bool GPUCracker::loadKernel(std::string& filename, std::string& kernelName, cl::
 
         std::vector<cl::Device> devices;
         devices.push_back(device);
-        int build_res = program->build(devices,"-g");
+        int build_res = program->build(devices);
         if(build_res !=CL_SUCCESS){
             std::cerr<<" Error building: \n"<<(*program).getBuildInfo<CL_PROGRAM_BUILD_LOG>(device)<< std::endl;
             *kernel = NULL;
