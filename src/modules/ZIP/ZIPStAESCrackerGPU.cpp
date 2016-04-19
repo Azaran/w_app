@@ -40,27 +40,46 @@ bool ZIPStAESCrackerGPU::initData() {
     erdData = cl::Buffer(context, CL_MEM_READ_WRITE, cpu->check_data.erdSize);
     encData = cl::Buffer(context, CL_MEM_READ_WRITE, cpu->check_data.encSize);
     iv =      cl::Buffer(context, CL_MEM_READ_WRITE, 16); 
+    uint16_t gws = deviceConfig.globalWorkSize;
+    uint8_t initBufferValue = 0;
 
+    g_buffer = cl::Buffer(context, CL_MEM_READ_WRITE, gws*(2*cpu->check_data.erdSize+cpu->check_data.encSize));
     // Passing data to the kernel via global memory
     que.enqueueWriteBuffer(erdData, CL_TRUE, 0,\
-	    cpu->check_data.erdSize, cpu->check_data.erdData);
-    que.enqueueWriteBuffer(encData, CL_TRUE, 0,\
-	    cpu->check_data.encSize, cpu->check_data.encData);
-    que.enqueueWriteBuffer(iv, CL_TRUE, 0, 16, cpu->check_data.ivData);
-    printf("GWS: %d", deviceConfig.globalWorkSize);
-   
-    kernel.setArg(userParamIndex, erdData);
-    kernel.setArg(userParamIndex+1, encData);
-    kernel.setArg(userParamIndex+2, iv);
-    kernel.setArg(userParamIndex+3, cpu->check_data.keyLength);
-    kernel.setArg(userParamIndex+4, cpu->check_data.erdSize);
-    kernel.setArg(userParamIndex+5, cpu->check_data.encSize);
+	    cpu->check_data.erdSize,
+	    cpu->check_data.erdData);
+    que.enqueueWriteBuffer(encData,
+	    CL_TRUE, 0,\
+	    cpu->check_data.encSize,
+	    cpu->check_data.encData);
+    que.enqueueWriteBuffer(iv,
+	    CL_TRUE, 0, 16,
+	    cpu->check_data.ivData);
+    que.enqueueFillBuffer(g_buffer,
+	    &initBufferValue,
+	    sizeof(uint8_t),
+	    gws*(2*cpu->check_data.erdSize+cpu->check_data.encSize),
+	    NULL, NULL);
 
-    // Dynamic allocation of kernel local memory
-//    kernel.setArg(userParamIndex+6, cl::__local(deviceConfig.globalWorkSize*cpu->check_data.erdSize));
-//    kernel.setArg(userParamIndex+7, deviceConfig.globalWorkSize*cpu->check_data.encSize, NULL);
-    return true;
+    kernel.setArg(userParamIndex,
+	    erdData);
+    kernel.setArg(userParamIndex+1,
+	    encData);
+    kernel.setArg(userParamIndex+2,
+	    g_buffer);
+    kernel.setArg(userParamIndex+3,
+	    iv);
+    kernel.setArg(userParamIndex+4,
+	    cpu->check_data.keyLength);
+    kernel.setArg(userParamIndex+5,
+	    cpu->check_data.erdSize);
+    kernel.setArg(userParamIndex+6,
+	    cpu->check_data.encSize);
+
+    return
+	true;
 }
+
 
 bool ZIPStAESCrackerGPU::verifyPassword(std::string& pass) {
  //    std::cout << std::endl;

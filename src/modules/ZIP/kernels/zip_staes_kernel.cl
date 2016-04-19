@@ -72,15 +72,19 @@ inline void Copy128(uchar *dest, uchar *src){
 	dest[I]=src[I];
 }
 inline void Copy128_global(uchar *dest,global uchar *src){
-    #pragma unroll
-    for (int I=0;I<16;I++)
-	dest[I]=src[I];
+#pragma unroll
+        for (int I=0;I<16;I++)
+		dest[I]=src[I];
+}
+inline void Copy128_g_in(global uchar *dest, uchar *src){
+#pragma unroll
+        for (int I=0;I<16;I++)
+		dest[I]=src[I];
 }
 
 
-
   
-void blockDecrypt(aes_context *aes, global uchar *input, uint inputLen, uchar *outBuffer)
+void blockDecrypt(aes_context *aes, global uchar *input, uint inputLen, global uchar *outBuffer)
 {
   if (inputLen <= 0)
     return;
@@ -137,7 +141,7 @@ void blockDecrypt(aes_context *aes, global uchar *input, uint inputLen, uchar *o
       Xor128_2(block,block,iv);
 
     Copy128_global((uchar*)iv,input);
-    Copy128(outBuffer,block);
+    Copy128_g_in(outBuffer,block);
 
     input += 16;
     outBuffer += 16;
@@ -558,7 +562,7 @@ void inline sha1(const uchar* msg, uint len, uchar* output){
     
 }
 
-void inline sha1_loc(const global uchar* msg, uint len, uchar* output){
+void inline sha1_global(const global uchar* msg, uint len, uchar* output){
     
     uint h0 = 0x67452301;
     uint h1 = 0xEFCDAB89;
@@ -744,6 +748,7 @@ void inline sha1_loc(const global uchar* msg, uint len, uchar* output){
     output[19] = h4 & 0xFF;
     
 }
+
 void derive_key(const uchar* hash, uchar key, uchar* output){
    
     uchar key_pad[64];
@@ -758,7 +763,26 @@ void derive_key(const uchar* hash, uchar key, uchar* output){
     sha1(key_pad,64,output);
 }
 
-void derive(const uchar* pass, uint klen, uchar* output){
+void derive_private(const uchar* pass, uint klen, uchar* output){
+
+    uchar passHash[20];
+    uchar temp[40];
+
+#pragma unroll
+    for (int i=0; i < 20; i++)
+	passHash[i] = 0x00;
+
+    sha1(pass,klen,passHash);
+    derive_key((uchar*)passHash, 0x36 , (uchar*)temp);
+    derive_key((uchar*)passHash, 0x5c, (uchar*)(temp+20));
+
+#pragma unroll
+    for (int i=0; i < 32; i++)
+	output[i] = temp[i];
+
+}
+
+void derive_global(const global uchar* pass, uint klen, uchar* output){
 
     uchar passHash[20];
     uchar temp[40];
@@ -767,7 +791,7 @@ void derive(const uchar* pass, uint klen, uchar* output){
     for (int i=0; i < 20; i++)
 	passHash[i] = 0x00;
     
-    sha1(pass,klen,passHash);
+    sha1_global(pass,klen,passHash);
     derive_key((uchar*)passHash, 0x36 , (uchar*)temp);
     derive_key((uchar*)passHash, 0x5c, (uchar*)(temp+20));
     
@@ -822,9 +846,9 @@ static uint crc32_tab[] = {
     0x54de5729, 0x23d967bf, 0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94,
     0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
 };
-uint crc32(uint crc, uchar *buf, uchar size)
+uint crc32(uint crc, global uchar *buf, uchar size)
 {
-    const uchar *p;
+    const global uchar *p;
     p = buf;
     crc = crc ^ ~0U;
     while (size--)
@@ -839,67 +863,104 @@ kernel void zip_staes_kernel( \
 	global uint *found_vector,\
 	global uchar* erdData,\
 	global uchar* encData,\
+	global uchar* g_buffer,\
 	constant uchar* iv,\
 	ushort klen,\
 	ushort erdSize,\
 	ushort encSize\
 	){
-    
     int id = get_global_id(0);
     int lid = get_global_id(0);
-    uchar tempKey[1024]; 
-    uchar rdData[512];
-    uchar vData[512];
+    ulong size = 2*erdSize+encSize;
+    global uchar *tempKey = g_buffer+(id*size); 
+    global uchar *rdData = g_buffer+(id*size+erdSize);
+    global uchar *vData = g_buffer+(id*size+2*erdSize);
     uchar my_pass_len = passwords[id*pass_len];
     uchar pass_buffer[32];
     uchar key[32];
     for(int i = 0;i<my_pass_len;i++){
-        pass_buffer[i] = passwords[id*pass_len+1+i];
+	pass_buffer[i] = passwords[id*pass_len+1+i];
     }
 
-    derive(pass_buffer, my_pass_len, key);
-    aes_context aes; 
+    if (lid == 0 && id == 0){
+	printf("\nIV : %c \n",0);
+#pragma unroll
+	for (int i=0; i<16; i++)
+	    printf ("%x ", iv[i]);
+    }
+    derive_private(pass_buffer, my_pass_len, key);
+
+    if (lid == 0 && id == 0){
+	printf("\nkey1: %c \n",pass_buffer[0]);
+#pragma unroll
+	for (int i=0; i<32; i++)
+	    printf ("%x ", key[i]);
+    }
+    aes_context aes;
     Init(&aes, key, klen, iv);
 
     blockDecrypt(&aes, erdData, erdSize, rdData);
-    
-    #pragma unroll
+
+    if (lid == 0 && id == 0){
+	printf("\nrdData: %c \n", 1);
+#pragma unroll
+	for (int i=0; i<erdSize; i++)
+	    printf ("%x ", rdData[i]);
+    }
+
+#pragma unroll
     for (int i=0; i<16; i++)
 	tempKey[i] = iv[i];
 
-    #pragma unroll
+#pragma unroll
     for (int i=0; i<erdSize-16; i++)
 	tempKey[i+16] = rdData[i];
 
-    derive(tempKey, erdSize, key);   
-    
+    derive_global(tempKey, erdSize, key);   
+    if (lid == 0 && id == 0){
+	printf("\nkey2: %c \n",pass_buffer[0]);
+#pragma unroll
+	for (int i=0; i<32; i++)
+	    printf ("%x ", key[i]);
+    }
+
     Init(&aes, key, klen, iv);
 
     blockDecrypt(&aes, encData, encSize, vData);
-    
+
+    if (lid == 0 && id == 0){
+
+	printf("\nvData: %c \n ",1);
+#pragma unroll
+	for (int i=0; i<encSize; i++)
+	    printf ("%x ", vData[i]);
+
+	printf("\nerdData: %c \n",2);
+#pragma unroll
+	for (int i=0; i<erdSize; i++)
+	    printf ("%x ", erdData[i]);
+
+	printf("\nencData: %c \n",2);
+#pragma unroll
+	for (int i=0; i<encSize; i++)
+	    printf ("%x ", encData[i]);
+    }
     uint crc;
 
     crc = vData[encSize-1];
     crc = (crc << 8) ^ vData[encSize-2];
     crc = (crc << 8) ^ vData[encSize-3];
     crc = (crc << 8) ^ vData[encSize-4];
-    
-    
+
+
     uint crc3 = crc32(0, vData, encSize-4); 
-    /*
-    printf("heslo: ");
-    for (int i = 0; i < my_pass_len; i++)
-	printf("%c", pass_buffer[i]);
-    printf(" lid: %d gid: %d crc: %u crc3: %u encs: %u\n", lid, id, crc, crc3, encSize);
-    */
+    
     if (crc != crc3){
-        return;
+	return;
     }
-    printf("prosel jsem");
     *found_flag = 1;
     uint big_pos = id/32;
     uint small_pos = id%32;
     uint val = 0x80000000 >> small_pos;
     atomic_or(found_vector+big_pos,val);
-    
 }
