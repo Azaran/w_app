@@ -23,14 +23,14 @@
 
 #include "SevenZFormat.h"
 #include "SevenZCrackerCPU.h"
-//#include "SevenZCrackerGPU.h"
+#include "SevenZCrackerGPU.h"
 #include "CrackerFactoryTemplate.tcc"
 
 
 
 typedef CrackerFactoryTemplate<SevenZCrackerCPU,SevenZInitData*> SevenZCrackerCPUFactory;
 
-//typedef CrackerFactoryTemplate<SevenZCrackerGPU,vector<SevenZInitData>*, true> SevenZCrackerGPUFactory;
+typedef CrackerFactoryTemplate<SevenZCrackerGPU,SevenZInitData*, true> SevenZCrackerGPUFactory;
 
 void *SzAlloc(void *p, size_t size) { p = p; return malloc(size); }
 
@@ -396,10 +396,10 @@ CrackerFactory* SevenZFormat::getCPUCracker(){
 }
 
 CrackerFactory* SevenZFormat::getGPUCracker(){
-//    if(data.type == NONE)
+    if(data.type == NONE)
 	return NULL;
-//    else
-//	return new SevenZCrackerGPUFactory(&data);
+    else
+	return new SevenZCrackerGPUFactory(&data);
 }
 
 SevenZInitData::SevenZInitData(){
