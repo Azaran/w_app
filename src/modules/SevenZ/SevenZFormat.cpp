@@ -71,11 +71,10 @@ uint64_t SevenZFormat::SevenZUINT64(ifstream *stream){
     if (bytes > 1)
 	stream->read(reinterpret_cast<char*>(&num[1]), bytes-1);
 
-    uint64_t sum = 0;
-    uint8_t i = 0;
-    while(bytes--){
+    uint64_t sum = num[0];
+    while(--bytes){
         sum = sum << 8;
-        sum += num[i++];
+        sum += num[bytes];
     }
     return sum;
 }
