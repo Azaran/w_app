@@ -26,6 +26,7 @@
 
 #include "SevenZFormat.h"
 #include "GPUCracker.h"
+#include "Aes.h"
 #include "SevenZCrackerCPU.h"
 
 /**
@@ -43,6 +44,7 @@ public:
 private:
     cl::Buffer first_block;
     cl::Buffer iv;
+    cl::Buffer aes_buffer;
 
     SevenZCrackerCPU *cpu;
 };

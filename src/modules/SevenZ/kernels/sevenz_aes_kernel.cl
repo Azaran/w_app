@@ -37,7 +37,8 @@
 /* 16-byte (4 * 32-bit words) blocks: 1 (IV) + 1 (keyMode) + 15 (AES-256 roundKeys) */
 #define AES_NUM_IVMRK_WORDS ((1 + 1 + 15) * 4)
 
-static constant uint T[256 * 4]={0xa56363c6, 0x847c7cf8, 0x997777ee, 0x8d7b7bf6, 0xdf2f2ff, 0xbd6b6bd6, 0xb16f6fde, 0x54c5c591, 
+static constant uint T[256 * 4]={
+  0xa56363c6, 0x847c7cf8, 0x997777ee, 0x8d7b7bf6, 0xdf2f2ff, 0xbd6b6bd6, 0xb16f6fde, 0x54c5c591, 
   0x50303060, 0x3010102, 0xa96767ce, 0x7d2b2b56, 0x19fefee7, 0x62d7d7b5, 0xe6abab4d, 0x9a7676ec, 
   0x45caca8f, 0x9d82821f, 0x40c9c989, 0x877d7dfa, 0x15fafaef, 0xeb5959b2, 0xc947478e, 0xbf0f0fb, 
   0xecadad41, 0x67d4d4b3, 0xfda2a25f, 0xeaafaf45, 0xbf9c9c23, 0xf7a4a453, 0x967272e4, 0x5bc0c09b, 
@@ -183,7 +184,8 @@ static constant uchar Sbox[256] = {
   0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
   0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16};
 
-static uint D[256 * 4]={0x50a7f451, 0x5365417e, 0xc3a4171a, 0x965e273a, 0xcb6bab3b, 0xf1459d1f, 0xab58faac, 0x9303e34b, 
+static constant uint D[256 * 4]={
+  0x50a7f451, 0x5365417e, 0xc3a4171a, 0x965e273a, 0xcb6bab3b, 0xf1459d1f, 0xab58faac, 0x9303e34b, 
   0x55fa3020, 0xf66d76ad, 0x9176cc88, 0x254c02f5, 0xfcd7e54f, 0xd7cb2ac5, 0x80443526, 0x8fa362b5, 
   0x495ab1de, 0x671bba25, 0x980eea45, 0xe1c0fe5d, 0x2752fc3, 0x12f04c81, 0xa397468d, 0xc6f9d36b, 
   0xe75f8f03, 0x959c9215, 0xeb7a6dbf, 0xda595295, 0x2d83bed4, 0xd3217458, 0x2969e049, 0x44c8c98e, 
@@ -312,7 +314,8 @@ static uint D[256 * 4]={0x50a7f451, 0x5365417e, 0xc3a4171a, 0x965e273a, 0xcb6bab
   0xc25f40a3, 0x1672c31d, 0xbc0c25e2, 0x288b493c, 0xff41950d, 0x397101a8, 0x8deb30c, 0xd89ce4b4, 
   0x6490c156, 0x7b6184cb, 0xd570b632, 0x48745c6c, 0xd04257b8};
 
-static constant uchar InvS[256]={0x52, 0x9, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb, 
+static constant uchar InvS[256]={
+  0x52, 0x9, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb, 
   0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb, 
   0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0xb, 0x42, 0xfa, 0xc3, 0x4e, 0x8, 
   0x2e, 0xa1, 0x66, 0x28, 0xd9, 0x24, 0xb2, 0x76, 0x5b, 0xa2, 0x49, 0x6d, 0x8b, 0xd1, 0x25, 0x72, 
@@ -375,7 +378,7 @@ static constant uchar Rcon[11] = { 0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x4
 #define FD(i, x) InvS[gb ## x(m[(i - x) & 3])]
 #define FD4(i) dest[i] = Ui32(FD(i, 0), FD(i, 1), FD(i, 2), FD(i, 3)) ^ w[i];
 
-void  Aes_SetKey_Enc(uint *w, const uchar *key, uint keySize)
+void  Aes_SetKey_Enc(global uint *w, const uchar *key, uint keySize)
 {
   uint i, wSize;
   wSize = keySize + 28;
@@ -398,19 +401,20 @@ void  Aes_SetKey_Enc(uint *w, const uchar *key, uint keySize)
   }
 }
 
-void  Aes_SetKey_Dec(uint *w, const uchar *key, uint keySize)
+void  Aes_SetKey_Dec(global uint *w, const uchar *key, uint keySize)
 {
   uint i, num;
   Aes_SetKey_Enc(w, key, keySize);
   num = keySize + 20;
   w += 8;
+  uint r;
   for (i = 0; i < num; i++)
   {
-    uint r = w[i];
+    r = w[i];
     w[i] =
-      D[        Sbox[gb0(r)]] ^
-      D[0x100 + Sbox[gb1(r)]] ^
-      D[0x200 + Sbox[gb2(r)]] ^
+      D[        Sbox[gb0(r)]] ^ 
+      D[0x100 + Sbox[gb1(r)]] ^ 
+      D[0x200 + Sbox[gb2(r)]] ^ 
       D[0x300 + Sbox[gb3(r)]];
   }
 }
@@ -418,14 +422,14 @@ void  Aes_SetKey_Dec(uint *w, const uchar *key, uint keySize)
 /* Aes_Encode and Aes_Decode functions work with little-endian words.
   src and dest are pointers to 4 uint words.
   src and dest can point to same block */
-void AesCbc_Init(uint *p, constant uchar *iv)
+void AesCbc_Init(global uint *p, constant uchar *iv)
 {
   uint i;
   for (i = 0; i < 4; i++)
     p[i] = GetUi32(iv + i * 4);
 }
 
-static void Aes_Decode(const uint *w, uint *dest, const uint *src)
+static void Aes_Decode(const global uint *w, uint *dest, const uint *src)
 {
   uint s[4];
   uint m[4];
@@ -446,7 +450,7 @@ static void Aes_Decode(const uint *w, uint *dest, const uint *src)
   FD4(0); FD4(1); FD4(2); FD4(3);
 }
 
-void  AesCbc_Decode(uint *p, global uchar *data, ulong numBlocks)
+void  AesCbc_Decode(global uint *p, uchar *data, ulong numBlocks)
 {
   uint in[4], out[4];
   for (; numBlocks != 0; numBlocks--, data += AES_BLOCK_SIZE)
@@ -707,9 +711,9 @@ void hash(uchar* input, uint inputlen, uchar* output){
 }
 
 #define MAX_PASS_SIZE 32
-void convertKey(const uchar* pass, uint passlen, uchar *key){
-    uint passSize; 
+uchar convertKey(const uchar* pass, uchar passlen, uchar *key){
     
+    uint passSize; 
     passSize = 2*passlen + 8; 
     
     uint i;
@@ -719,8 +723,9 @@ void convertKey(const uchar* pass, uint passlen, uchar *key){
 	key[i*2+1] = 0;
     }
     #pragma unroll
-    for (i = i*2+1; i<passSize; i++)
+    for (i = i*2; i<passSize; i++)
 	key[i] = 0;
+    return passSize;
 }
 
 kernel void sevenz_aes_kernel(\
@@ -728,8 +733,9 @@ kernel void sevenz_aes_kernel(\
         uchar pass_len,\
         global uchar *found_flag,\
         global uint *found_vector,\
-        global uchar *first_block,\
-        constant uchar *iv\
+        constant uchar *first_block,\
+        constant uchar *iv,\
+        global uint *aes_buffer\
 	) {
     int id = get_global_id(0);
     
@@ -737,26 +743,30 @@ kernel void sevenz_aes_kernel(\
     uchar pass_buffer[MAX_PASS_SIZE];
     uchar key[32]; 
     uchar extended_pass[MAX_PASS_SIZE*2+8];
+    uchar passSize; 
+    uchar block[16];;
+    global uint *aes = aes_buffer + (id*(AES_NUM_IVMRK_WORDS+3));
     
-    uint aes[AES_NUM_IVMRK_WORDS+3];
-    
-    for(int i = 0; i<my_pass_len; i++){
+    #pragma unroll
+    for ( int i = 0; i < 16; i++)
+	block[i] = first_block[i];
+    #pragma unroll
+    for(int i = 0; i<my_pass_len; i++)
         pass_buffer[i] = passwords[id*pass_len+1+i];
-    }
     
-    convertKey(pass_buffer, my_pass_len, extended_pass);
-    hash(extended_pass, my_pass_len*2+4, key);
+    passSize = convertKey(pass_buffer, my_pass_len, extended_pass);
+    hash(extended_pass, passSize, key);
+    
     AesCbc_Init(aes, iv);
     Aes_SetKey_Dec(aes+4, key, 32);
-    AesCbc_Decode(aes, first_block, 1); 
+    AesCbc_Decode(aes, block, 1); // 1 = 16 Bytes 
     
-    
-    if (first_block[0] != 0 && (first_block[0] != 4 || first_block[1] !=6))
-        return;
-    
-    *found_flag = 1;
-    uint big_pos = id/32;
-    uint small_pos = id%32;
-    uint val = 0x80000000 >> small_pos;
-    atomic_or(found_vector+big_pos,val);
+    if (block[0] == 0 || (block[0] == 1 && block[1] ==4)){
+	*found_flag = 1;
+	uint big_pos = id/32;
+	uint small_pos = id%32;
+	uint val = 0x80000000 >> small_pos;
+	atomic_or(found_vector+big_pos,val);
+    }    
+    return;
 }

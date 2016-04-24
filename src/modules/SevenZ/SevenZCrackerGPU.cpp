@@ -36,20 +36,24 @@
  }
  
  bool SevenZCrackerGPU::initData() {
+    uint32_t gws = deviceConfig.globalWorkSize;
+    uint8_t initial_val = 0;
+    aes_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, gws*sizeof(uint32_t)*AES_NUM_IVMRK_WORDS+3);
+     first_block = cl::Buffer(context,CL_MEM_WRITE_ONLY,sizeof(char)*DECODE_BLOCK_SIZE);
+     iv = cl::Buffer(context,CL_MEM_WRITE_ONLY,sizeof(char)*DECODE_BLOCK_SIZE);
      
-     first_block = cl::Buffer(context,CL_MEM_READ_WRITE,sizeof(char)*DECODE_BLOCK_SIZE);
-     iv = cl::Buffer(context,CL_MEM_READ_WRITE,sizeof(char)*DECODE_BLOCK_SIZE);
-     
+     que.enqueueWriteBuffer(aes_buffer, CL_TRUE, 0, sizeof(uint32_t)*gws, &initial_val);
      que.enqueueWriteBuffer(first_block, CL_TRUE, 0, sizeof(char)*DECODE_BLOCK_SIZE, cpu->check_data.encData);
      que.enqueueWriteBuffer(iv, CL_TRUE, 0, sizeof(char)*DECODE_BLOCK_SIZE, cpu->iv);
      
      kernel.setArg(userParamIndex, first_block);
      kernel.setArg(userParamIndex+1, iv);
+     kernel.setArg(userParamIndex+2, aes_buffer);
      return true;
  }
  
  bool SevenZCrackerGPU::verifyPassword(std::string& pass) {
-    return !cpu->checkPassword(&pass);
+     return !cpu->checkPassword(&pass);
  }
  
  
