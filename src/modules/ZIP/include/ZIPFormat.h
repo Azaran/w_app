@@ -82,6 +82,9 @@ protected:
      * @return 
      */
     ZIPInitData readOneFile(std::ifstream *stream);
+    
+    
+    uint16_t readStongEncHdr(std::ifstream *stream, ZIPInitData *data);
     /**
      * Removes all files, except the smallest one
      */

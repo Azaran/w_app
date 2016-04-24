@@ -1465,6 +1465,11 @@ kernel void zip_staes_kernel( \
     for(int i = 0;i<my_pass_len;i++){
 	pass_buffer[i] = passwords[id*pass_len+1+i];
     }
+   
+//    printf("\npass: %c",pass_buffer[0]);
+//    #pragma unroll
+//    for (int i=1; i<my_pass_len; i++)
+//	printf ("%c", pass_buffer[i]);
 
    //  if (lid == 0 && id == 0){
    //      printf("\nIV : %c \n",0);
