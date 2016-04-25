@@ -69,7 +69,6 @@ uint16_t ZIPFormat::readStongEncHdr(std::ifstream *stream, ZIPInitData *data){
 
 
     stream->read(reinterpret_cast<char*>(&data->ivSize),sizeof(uint16_t));
-    // std::cout << data->ivSize << std::endl;
     data->ivData = new uint8_t [data->ivSize];
     stream->read(reinterpret_cast<char*>(data->ivData),data->ivSize);
 
@@ -97,8 +96,6 @@ uint16_t ZIPFormat::readStongEncHdr(std::ifstream *stream, ZIPInitData *data){
     data->encData = new uint8_t[data->encSize];
     stream->read(reinterpret_cast<char*>(data->encData),data->encSize);
     //		stream->read(reinterpret_cast<char*>(&data->crc32),sizeof(uint32_t));
-    std::cout << "last data: " << std::hex << (int)*(data->encData+data->encSize-2) << " " << (int)*(data->encData+data->encSize-1) << std::endl;
-    std::cout << "algid: " << std::hex << algid << std::endl;
     return algid;
 
 }
@@ -114,7 +111,6 @@ ZIPInitData ZIPFormat::readOneFile(std::ifstream *stream){
     stream->seekg(4,stream->cur); // skip date and time
     stream->read(reinterpret_cast<char*>(&data.crc32),sizeof(uint32_t));
     stream->read(reinterpret_cast<char*>(&compressed_size),sizeof(uint32_t));
-    std::cout << "size: " << std::hex <<  compressed_size << std::endl;
     stream->read(reinterpret_cast<char*>(&data.uncompressedSize),sizeof(uint32_t));
     stream->read(reinterpret_cast<char*>(&filename_len),sizeof(uint16_t));
     stream->read(reinterpret_cast<char*>(&ext_fields_len),sizeof(uint16_t));
@@ -229,7 +225,6 @@ void ZIPFormat::init(std::string& filename){
 		else if (algid >= 0x660e && algid <= 0x6610)
 		    filedata.type = SAES;
 		data.push_back(filedata);
-		//std::cout << "type: " << filedata.type << "  vector_size: " << data.size() << " algid: " << std::hex << algid << std::endl;
 	    }
 	    break;
 	}
