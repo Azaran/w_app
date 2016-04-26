@@ -38,7 +38,7 @@
  bool SevenZCrackerGPU::initData() {
     uint32_t gws = deviceConfig.globalWorkSize;
     uint8_t initial_val = 0;
-    aes_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, gws*sizeof(uint32_t)*AES_NUM_IVMRK_WORDS+3);
+    aes_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, gws*sizeof(uint32_t)*(AES_NUM_IVMRK_WORDS+3));
      first_block = cl::Buffer(context,CL_MEM_WRITE_ONLY,sizeof(char)*DECODE_BLOCK_SIZE);
      iv = cl::Buffer(context,CL_MEM_WRITE_ONLY,sizeof(char)*DECODE_BLOCK_SIZE);
      
