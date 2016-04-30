@@ -59,8 +59,6 @@ SevenZCrackerCPU::~SevenZCrackerCPU(){
 
 CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
    
-    convertKey(pass);
-    hash(key);
     ELzmaStatus status;
     SRes decode;
     uint32_t *aes = new uint32_t[AES_NUM_IVMRK_WORDS+3];
@@ -69,6 +67,9 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
     ISzAlloc alloc = { SzAlloc, SzFree };
     SizeT dlen = destlen;
     SizeT slen = srclen;
+
+    convertKey(pass);
+    hash(key);
    
     if (slen > 2*DECODE_BLOCK_SIZE){
 	// Decrypt first block and check if first byte is 0
@@ -83,16 +84,17 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
 	    // When header is not compressed check whether the first 2 bytes are 0x04 and 0x06
 	    return CR_PASSWORD_WRONG;
     }
+
     memcpy(data, check_data.encData, slen); 
     decrypt(aes, data, slen / DECODE_BLOCK_SIZE);
+
     if (check_data.folders[0].numCoders != 1){
         this->raw = new uint8_t[destlen];
         decode = LzmaDecode(raw, &dlen,\
                 data, &slen,\
                 check_data.folders[0].coder[1].property,\
                 check_data.folders[0].coder[1].propertySize,\
-                LZMA_FINISH_ANY, &status, &alloc);
-    
+                LZMA_FINISH_ANY, &status, &alloc);  
     } else if(check_data.folders[0].numCoders == 1) 
         raw = data;
 

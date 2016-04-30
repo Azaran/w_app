@@ -27,9 +27,6 @@
 /***************************************************************************
  * This code is based on public domain Szymon Stefanek AES implementation: *
  * http://www.pragmaware.net/software/rijndael/index.php                   *
- *                                                                         *
- * Dynamic tables generation is based on the Brian Gladman work:           *
- * http://fp.gladman.plus.com/cryptography_technology/rijndael             *
  ***************************************************************************/
 #define _MAX_KEY_COLUMNS (256/32)
 #define _MAX_ROUNDS      14
