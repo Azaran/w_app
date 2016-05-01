@@ -28,6 +28,7 @@
 #include <iostream>
 #include "Aes.h"
 #include "7zCrc.h"
+#include "utf8.h"
 #include "Sha256.h"
 using namespace std;
 
@@ -143,20 +144,10 @@ void SevenZCrackerCPU::hash(uint8_t* output){
 
 void SevenZCrackerCPU::convertKey(const string* pass){
     
-    if ( 2*pass->length()+8 > passSize){
-	delete[] password;
-	passSize = 2*pass->length() + 8; 
-	password = new uint8_t[passSize];
-    }
-//    cout << hex << "passSize: " << passSize << endl;
-    int i;
-    for (i=0; i < pass->length(); i++){
-	password[i*2] = (int)(pass->c_str())[i];
-	password[i*2+1] = 0;
-//	cout << " p: " << (int) password[i*2];
-//	cout << " p1: " << (int) password[i*2 +1];
-    }
-    for (i = i*2; i < passSize; i++){
-	password[i] = 0;
-    }
+    vector<uint16_t> new_pass;
+    utf8::utf8to16(pass->begin(), pass->end(), back_inserter(new_pass)); 
+    passSize = 2*new_pass.size() + 8;
+    password = new uint8_t[2*new_pass.size()+8];
+    memcpy(password, (uint8_t*)new_pass.data(), 2*new_pass.size());
+    memset(password+2*new_pass.size(), 0, 8);
 }

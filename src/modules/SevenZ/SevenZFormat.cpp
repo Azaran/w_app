@@ -349,7 +349,7 @@ void SevenZFormat::readInitInfo(ifstream *stream){
 	    rawhdr.open("raw.hdr", ios_base::binary);
 	    readHeader(&rawhdr);
 	    rawhdr.close();
-	    //remove("raw.hdr");	    // clear the file
+	    remove("raw.hdr");	    // clear the file
 	    }
 	} 
 	    // else : go cracking

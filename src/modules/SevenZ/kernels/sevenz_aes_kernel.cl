@@ -693,6 +693,218 @@ void Sha256_Final(CSha256 *p, uchar *digest)
   Sha256_Init(p);
 }
 
+    
+typedef enum {
+    UTF8_OK,
+    NOT_ENOUGH_ROOM,
+    INVALID_LEAD,
+    INCOMPLETE_SEQUENCE, 
+    OVERLONG_SEQUENCE, 
+    INVALID_CODE_POINT
+}utf_error ;
+#define UTF8_CPP_INCREASE_AND_RETURN_ON_ERROR(IT, END) {utf_error ret = increase_safely(IT, END); if (ret != UTF8_OK) return ret;}    
+    
+constant ushort LEAD_SURROGATE_MIN  = 0xd800u;
+constant ushort LEAD_SURROGATE_MAX  = 0xdbffu;
+constant ushort TRAIL_SURROGATE_MIN = 0xdc00u;
+constant ushort TRAIL_SURROGATE_MAX = 0xdfffu;
+constant ushort LEAD_OFFSET         = 0xd800u - (0x10000 >> 10);
+constant uint SURROGATE_OFFSET    = 0x10000u - (0xd800u << 10) - 0xdc00u;
+
+// Maximum valid value for a Unicode code point
+constant uint CODE_POINT_MAX      = 0x0010ffffu;
+
+inline uchar mask8(uchar oc) {
+    return (uchar)(0xff & oc);
+}
+inline bool is_trail(uchar oc) {
+        return ((mask8(oc) >> 6) == 0x2);
+    }
+    
+utf_error increase_safely(uchar* it, uchar* end) {
+        if (++*it == end)
+            return NOT_ENOUGH_ROOM;
+
+        if (!is_trail(*it))
+            return INCOMPLETE_SEQUENCE;
+        
+        return UTF8_OK;
+    }
+inline uchar sequence_length(uchar lead_it) {
+    uchar lead = mask8(lead_it);
+    if (lead < 0x80)
+	return 1;
+    else if ((lead >> 5) == 0x6)
+	return 2;
+    else if ((lead >> 4) == 0xe)
+	return 3;
+    else if ((lead >> 3) == 0x1e)
+	return 4;
+    else
+	return 0;
+}
+inline bool is_overlong_sequence(uint cp, uchar length)	{
+    if (cp < 0x80) {
+	if (length != 1) 
+	    return true;
+    } else if (cp < 0x800) {
+	if (length != 2) 
+	    return true;
+    } else if (cp < 0x10000) {
+	if (length != 3) 
+	    return true;
+    }
+
+    return false;
+}
+inline bool is_surrogate(ushort cp) {
+    return (cp >= LEAD_SURROGATE_MIN && cp <= TRAIL_SURROGATE_MAX);
+}
+inline bool is_code_point_valid(uint cp)	{
+    return (cp <= CODE_POINT_MAX && !is_surrogate(cp));
+}
+    
+utf_error get_sequence_1(uchar* it, uchar* end, uint* code_point){
+    if (*it == end)
+	return NOT_ENOUGH_ROOM;
+
+    *code_point = mask8(*it);
+
+    return UTF8_OK;
+}
+utf_error get_sequence_2(uchar* it, uchar* end, uint* code_point) {
+    if (*it == end) 
+	return NOT_ENOUGH_ROOM;
+
+    *code_point = mask8(*it);
+
+    UTF8_CPP_INCREASE_AND_RETURN_ON_ERROR(it, end)
+
+	*code_point = ((*code_point << 6) & 0x7ff) + ((*it) & 0x3f);
+
+    return UTF8_OK;
+}
+utf_error get_sequence_3(uchar* it, uchar* end, uint* code_point) {
+    if (*it == end)
+	return NOT_ENOUGH_ROOM;
+
+    *code_point = mask8(*it);
+
+    UTF8_CPP_INCREASE_AND_RETURN_ON_ERROR(it, end)
+
+	*code_point = ((*code_point << 12) & 0xffff) + ((mask8(*it) << 6) & 0xfff);
+
+    UTF8_CPP_INCREASE_AND_RETURN_ON_ERROR(it, end)
+
+	*code_point += (*it) & 0x3f;
+
+    return UTF8_OK;
+}
+utf_error get_sequence_4(uchar* it, uchar* end, uint* code_point) {
+    if (*it == end)
+	return NOT_ENOUGH_ROOM;
+
+    *code_point = mask8(*it);
+
+    UTF8_CPP_INCREASE_AND_RETURN_ON_ERROR(it, end)
+
+	*code_point = ((*code_point << 18) & 0x1fffff) + ((mask8(*it) << 12) & 0x3ffff);
+
+    UTF8_CPP_INCREASE_AND_RETURN_ON_ERROR(it, end)
+
+	*code_point += (mask8(*it) << 6) & 0xfff;
+
+    UTF8_CPP_INCREASE_AND_RETURN_ON_ERROR(it, end)
+
+	*code_point += (*it) & 0x3f;
+
+    return UTF8_OK;
+}
+utf_error validate_next(uchar* it, uchar* end, uint* code_point){
+    // Save the original value of it so we can go back in case of failure
+    // Of course, it does not make much sense with i.e. stream iterators
+    uchar* original_it = it;
+
+    uint cp = 0;
+    // Determine the sequence length based on the lead octet
+    uchar length = sequence_length(*it);
+
+    // Get trail octets and calculate the code point
+    utf_error err = UTF8_OK;
+    switch (length) {
+	case 0: 
+	    return INVALID_LEAD;
+	case 1:
+	    err = get_sequence_1(it, end, &cp);
+	    break;
+	case 2:
+	    err = get_sequence_2(it, end, &cp);
+	    break;
+	case 3:
+	    err = get_sequence_3(it, end, &cp);
+	    break;
+	case 4:
+	    err = get_sequence_4(it, end, &cp);
+	    break;
+    }
+
+    if (err == UTF8_OK) {
+	// Decoding succeeded. Now, security checks...
+	if (is_code_point_valid(cp)) {
+	    if (!is_overlong_sequence(cp, length)){
+		// Passed! Return here.
+		*code_point = cp;
+		++it;
+		return UTF8_OK;
+	    } else
+		err = OVERLONG_SEQUENCE;
+	} else 
+	    err = INVALID_CODE_POINT;
+    }
+
+    // Failure branch - restore the original value of the iterator
+    *it = original_it;
+    return err;
+}
+uint utf8_next(uchar** it, uchar* end) {
+    uint cp = 0;
+    utf_error err_code = validate_next(it, end, &cp);
+    return cp;
+}
+
+uchar utf8to16(uchar* start, uchar* end, ushort* result){
+    uint i = 0;
+    while (start != end) {
+	uint cp = utf8_next(start, end);
+	if (cp > 0xffff) { //make a surrogate pair
+	    result += i++;
+	    *result = (ushort)((cp >> 10)   + LEAD_OFFSET);
+	    result += i++;
+	    *result = (ushort)((cp & 0x3ff) + TRAIL_SURROGATE_MIN);
+	} else {
+	    result += i++;
+	    *result = (ushort)(cp);
+	}
+	start++;
+    }
+    return i;
+}
+
+#define MAX_PASS_SIZE 32
+uchar convertKey(uchar* pass, uchar passlen, uchar *key){
+    
+    ushort new_pass[MAX_PASS_SIZE] = {0};
+    ushort *np = new_pass;
+    uchar passSize = utf8to16(pass, pass+passlen, np); 
+   
+    #pragma unroll
+    for (uchar i=0; i < passSize; i++){
+	*(key+i*2)   = (*new_pass+i) & 0xff;
+	*(key+i*2+1) = (*new_pass+i) & 0xff00;
+    }
+    return 2*passSize;
+}
+
 void hash(uchar* input, uint inputlen, uchar* output){
 
     CSha256 sha;
@@ -710,24 +922,6 @@ void hash(uchar* input, uint inputlen, uchar* output){
     Sha256_Final(&sha, output);
 }
 
-#define MAX_PASS_SIZE 32
-uchar convertKey(const uchar* pass, uchar passlen, uchar *key){
-    
-    uint passSize; 
-    passSize = 2*passlen + 8; 
-    
-    uint i;
-    #pragma unroll
-    for (i=0; i < passlen; i++){
-	key[i*2] = pass[i];
-	key[i*2+1] = 0;
-    }
-    #pragma unroll
-    for (i = i*2; i<passSize; i++)
-	key[i] = 0;
-    return passSize;
-}
-
 kernel void sevenz_aes_kernel(\
         global uchar* passwords,\
         uchar pass_len,\
@@ -742,20 +936,21 @@ kernel void sevenz_aes_kernel(\
     uchar my_pass_len = passwords[id*pass_len];
     uchar pass_buffer[MAX_PASS_SIZE];
     uchar key[32]; 
-    uchar extended_pass[MAX_PASS_SIZE*2+8];
+    uchar extended_pass[MAX_PASS_SIZE*2+8] = {0};
     uchar passSize; 
-    uchar block[16];;
+    uchar block[16];
     global uint *aes = aes_buffer + (id*(AES_NUM_IVMRK_WORDS+3));
     
-    #pragma unroll
-    for ( int i = 0; i < 16; i++)
-	block[i] = first_block[i];
     #pragma unroll
     for(int i = 0; i<my_pass_len; i++)
         pass_buffer[i] = passwords[id*pass_len+1+i];
     
-    passSize = convertKey(pass_buffer, my_pass_len, extended_pass);
-    hash(extended_pass, passSize, key);
+    passSize = convertKey(&pass_buffer, my_pass_len, extended_pass);
+    hash(extended_pass, passSize+8, key);
+
+    #pragma unroll
+    for ( int i = 0; i < 16; i++)
+	block[i] = first_block[i];
     
     AesCbc_Init(aes, iv);
     Aes_SetKey_Dec(aes+4, key, 32);
