@@ -27,24 +27,24 @@ if len(sys.argv) < 4:
                 """)
     sys.exit(1)
 
-path = "./testfiles/experiments/"
+path = "testfiles\\experiments\\"
 if sys.argv[1] == "zip":
-    gws = [32738, 32738, 32738, 32738]
+    gws = [225024, 450048, 450048, 450048]
     if not (6 in sys.argv):
         blen = "256"
     else:
         blen = sys.argv[5]
-    path += "securezip/"
+    path += "securezip\\"
     files_in_dir = "*"+blen+"*z.zip"
 
 elif sys.argv[1] == "7z":
-    path += "7z/"
+    path += "7z\\"
     if 6 in sys.argv:
         if sys.argv[5] == "hdr":
             files_in_dir= "*z_hdr.7z"
     else:
         files_in_dir= "*z.7z"
-    gws = [32738, 32738, 32738, 32738]
+    gws = [64, 64, 64, 64]
 
 if path == "":
     print("I wasnt able to determine the path!")
@@ -68,7 +68,6 @@ for i in range(1, len(sys.argv)):
         filename += "_"
 filename += ".out"
 
-
 #ca = subprocess.Popen("./clearall.sh", shell=True)
 #ca.wait()
 
@@ -89,7 +88,7 @@ for f in files:
     If you need something use Crtl+C and when you are done turn me on again with args I
     ran with and I will continue my work! Thank you for your cooperation.
     """)
-    p = subprocess.Popen("./wrathion -v " + devices  + " -f " + f, 
+    p = subprocess.Popen("wrathion.exe -v " + devices  + " -f " + f, 
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     try:
         stdout, stderr = p.communicate(timeout=60*10) # 10 minutes
@@ -98,7 +97,7 @@ for f in files:
         p.kill()
         timedout = True
     str_stdout = str(stdout)
-    r_speeds = re.compile(r'Thread [0-9]{1,2}: ([0-9]*) p/s[,]{0,1}')
+    r_speeds = re.compile('Thread [0-9]{1,2}: ([0-9]*) p/s[,]{0,1}')
     l_speeds = re.findall(r_speeds,str_stdout)
 
     if (len(l_speeds) > 0):
@@ -108,9 +107,14 @@ for f in files:
         avg_thread_speed = 0
         avg_total_speed = 0
 
+    #out.write(str_stdout)
+    r_time = re.compile(
+      r'Total time spent by cracking:\\r\\n(.*)\s\\r\\n', re.UNICODE)
     
-    r_time = re.compile(r'Total time spent by cracking:\\n(.*)\s\\n')
-    l_time = re.findall(r_time,str_stdout)
+    if r_time:
+        l_time = re.findall(r_time,str_stdout)
+    else:
+        print("Something went wrong with parsing output.")
     
     time = '%s' % ', '.join(map(str, l_time))
     
@@ -126,10 +130,18 @@ for f in files:
     out.write(msg+"\r")
     out.write("stderr:\n" + str(stderr))
     completed += 1
-    r_exp_filename = re.escape(path)+r"(.*)$"
-    exp_filename = re.search(r_exp_filename,f).group(1)
-    #print (exp_filename)
-    os.rename(f, path + "/finished/" + exp_filename)
+    r_exp_filename = re.escape(path)+u"(.*)$"
+    s_exp_filename = re.search(r_exp_filename,f)
+    
+    if s_exp_filename:
+        exp_filename = s_exp_filename.group(1)    
+    else:
+        exp_filename = ""
+        print("Something went wrong with parsing output.")
+    
+    
+    print (exp_filename)
+    os.rename(f, path + "finished\\" + exp_filename)
     print ("Completed: "+str(completed) + "/" + str(len(files)))
     out.flush()
 out.close()
