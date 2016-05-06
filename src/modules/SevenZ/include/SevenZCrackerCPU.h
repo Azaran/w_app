@@ -53,7 +53,7 @@ protected:
      */
     void hash(uint8_t* output);
 
-    void decrypt(uint32_t* aes, uint8_t* data, uint64_t len);
+    void decrypt(uint8_t* data, uint64_t len);
     /**
      * Wannabe UTF-8 to UTF-16
      * @param pass password
@@ -65,8 +65,8 @@ protected:
     uint64_t passSize= 0;
     uint64_t destlen;
     uint64_t srclen;
-    uint8_t *data;
-    uint8_t *raw;
+    uint8_t *data = NULL;
+    uint8_t *raw = NULL;
 };
 
 #endif	/* SevenZCRACKERCPU_H */

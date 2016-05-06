@@ -62,12 +62,10 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
    
     ELzmaStatus status;
     SRes decode;
-    uint32_t *aes = new uint32_t[AES_NUM_IVMRK_WORDS+3];
-    *aes = {0};
-    uint8_t first_block[DECODE_BLOCK_SIZE];
     ISzAlloc alloc = { SzAlloc, SzFree };
     SizeT dlen = destlen;
     SizeT slen = srclen;
+    uint8_t first_block[DECODE_BLOCK_SIZE];
 
     convertKey(pass);
     hash(key);
@@ -76,7 +74,7 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
 	// Decrypt first block and check if first byte is 0
 	memcpy(first_block, check_data.encData, DECODE_BLOCK_SIZE);
 
-	decrypt(aes, first_block, 1);
+	decrypt(first_block, 1);
 
 	if (check_data.folders[0].numCoders != 1 && first_block[0] != 0)
 	    // For LZMA first byte is always 0
@@ -87,9 +85,11 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
     }
 
     memcpy(data, check_data.encData, slen); 
-    decrypt(aes, data, slen / DECODE_BLOCK_SIZE);
+    decrypt(data, slen / DECODE_BLOCK_SIZE);
 
     if (check_data.folders[0].numCoders != 1){
+	if (this->raw != NULL)
+	    delete[] this->raw;
         this->raw = new uint8_t[destlen];
         decode = LzmaDecode(raw, &dlen,\
                 data, &slen,\
@@ -117,12 +117,15 @@ CheckResult SevenZCrackerCPU::checkPassword(const std::string* pass) {
     return CR_PASSWORD_WRONG;
 }
 
-void SevenZCrackerCPU::decrypt(uint32_t* aes, uint8_t* data, uint64_t len){
+void SevenZCrackerCPU::decrypt(uint8_t* data, uint64_t len){
     
+    uint32_t *aes = new uint32_t[AES_NUM_IVMRK_WORDS+3];
+    *aes = {0};
     int offset = ((0 - (unsigned)(ptrdiff_t)aes) & 0xf) / sizeof(uint32_t);
     AesCbc_Init(aes+offset, iv);
     Aes_SetKey_Dec(aes+offset+4, key, AES_KEY_SIZE);
     g_AesCbc_Decode(aes+offset, data, len); 
+    delete[] aes;
 }
 
 void SevenZCrackerCPU::hash(uint8_t* output){
@@ -146,8 +149,13 @@ void SevenZCrackerCPU::convertKey(const string* pass){
     
     vector<uint16_t> new_pass;
     utf8::utf8to16(pass->begin(), pass->end(), back_inserter(new_pass)); 
-    passSize = 2*new_pass.size() + 8;
-    password = new uint8_t[2*new_pass.size()+8];
+    if (passSize < 2*new_pass.size() + 8){
+	passSize = 2*new_pass.size() + 8;
+	if (password != NULL)
+	    delete[] password;
+	password = new uint8_t[2*new_pass.size()+8];
+    }
+
     memcpy(password, (uint8_t*)new_pass.data(), 2*new_pass.size());
     memset(password+2*new_pass.size(), 0, 8);
 }

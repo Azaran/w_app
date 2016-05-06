@@ -866,6 +866,7 @@ utf_error validate_next(uchar* it, uchar* end, uint* code_point){
     *it = original_it;
     return err;
 }
+
 uint utf8_next(uchar** it, uchar* end) {
     uint cp = 0;
     utf_error err_code = validate_next(it, end, &cp);
@@ -877,13 +878,10 @@ uchar utf8to16(uchar* start, uchar* end, ushort* result){
     while (start != end) {
 	uint cp = utf8_next(start, end);
 	if (cp > 0xffff) { //make a surrogate pair
-	    result += i++;
-	    *result = (ushort)((cp >> 10)   + LEAD_OFFSET);
-	    result += i++;
-	    *result = (ushort)((cp & 0x3ff) + TRAIL_SURROGATE_MIN);
+	    *(result+i++) = (ushort)((cp >> 10)   + LEAD_OFFSET);
+	    *(result+i++) = (ushort)((cp & 0x3ff) + TRAIL_SURROGATE_MIN);
 	} else {
-	    result += i++;
-	    *result = (ushort)(cp);
+	    *(result+i++)= (ushort)(cp);
 	}
 	start++;
     }
@@ -891,17 +889,26 @@ uchar utf8to16(uchar* start, uchar* end, ushort* result){
 }
 
 #define MAX_PASS_SIZE 32
-uchar convertKey(uchar* pass, uchar passlen, uchar *key){
+uchar convertKey(uchar* start, uchar* end, uchar *key){
     
     ushort new_pass[MAX_PASS_SIZE] = {0};
     ushort *np = new_pass;
-    uchar passSize = utf8to16(pass, pass+passlen, np); 
-   
-    #pragma unroll
-    for (uchar i=0; i < passSize; i++){
-	*(key+i*2)   = (*new_pass+i) & 0xff;
-	*(key+i*2+1) = (*new_pass+i) & 0xff00;
+    uchar passSize = utf8to16(start, end, np); 
+    
+    /*
+    printf("pass: %d", 0);
+    for ( uchar* b = start; b != end; b++){
+	printf("%c", *b);
     }
+    */
+
+    //printf("conv_key_passSize: %d ", passSize);
+    for (uchar i=0; i < passSize; i++){
+//	printf("%c", new_pass[i]);
+	*(key+i*2)   = new_pass[i] & 0xff;
+	*(key+i*2+1) = new_pass[i] & 0xff00;
+    }
+  //  printf(" %c \n", 0);
     return 2*passSize;
 }
 
@@ -945,7 +952,7 @@ kernel void sevenz_aes_kernel(\
     for(int i = 0; i<my_pass_len; i++)
         pass_buffer[i] = passwords[id*pass_len+1+i];
     
-    passSize = convertKey(&pass_buffer, my_pass_len, extended_pass);
+    passSize = convertKey(&pass_buffer, &pass_buffer[my_pass_len], extended_pass);
     hash(extended_pass, passSize+8, key);
 
     #pragma unroll
@@ -955,8 +962,19 @@ kernel void sevenz_aes_kernel(\
     AesCbc_Init(aes, iv);
     Aes_SetKey_Dec(aes+4, key, 32);
     AesCbc_Decode(aes, block, 1); // 1 = 16 Bytes 
-    
-    if (block[0] == 0 || (block[0] == 1 && block[1] ==4)){
+
+    /*
+    printf("pass: %d", my_pass_len);
+    for ( int i = 0; i < my_pass_len; i++){
+	printf("%c", pass_buffer[i]);
+    }
+    printf("\nextended_key: %d", passSize);
+    for ( int i = 0; i < passSize; i++){
+	printf("%c", extended_pass[i]);
+    }
+    printf("\n %d", 0);
+    */
+    if (block[0] == 0 || (block[0] == 1 && block[1] ==4 && block[2] == 6)){
 	*found_flag = 1;
 	uint big_pos = id/32;
 	uint small_pos = id%32;
