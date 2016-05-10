@@ -1,4 +1,3 @@
-
 #ifndef CRC__H
 #define CRC__H
 

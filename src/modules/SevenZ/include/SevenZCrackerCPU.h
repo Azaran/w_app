@@ -49,13 +49,16 @@ public:
 protected:
     /**
      * Based on 7zip CPP/Crypto/7zAES.cpp
-     * @param output result key (hash)
+     * @param output
      */
     void hash(uint8_t* output);
-
+    /**
+     * Calls functions from 7zAES library and decrypts the data passed into it 
+     * @param data, len 
+     */
     void decrypt(uint8_t* data, uint64_t len);
     /**
-     * Wannabe UTF-8 to UTF-16
+     * Calls functions from UTF-8 library and converts UTF-8 to UTF-16
      * @param pass password
      */
     void convertKey(const string* pass);

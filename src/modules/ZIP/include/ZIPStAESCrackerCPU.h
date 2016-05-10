@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2014 Jan Schmied
+ * Copyright (C) 2016 Vojtech Vecera
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy 
  * of this software and associated documentation files (the "Software"), to deal 
@@ -44,23 +44,17 @@ public:
 
     /**
      * Calculate SHA1 hash of message
-     * @param msg input to hash
-     * @param len input legth
-     * @param output result hash
+     * @param msg, len, output
      */
     void sha1(const uint8_t* msg,unsigned int len,uint8_t* output);
     /**
      * Similar to Microsoft CryptoDeriveKey()
-     * @param msg input to SHA1
-     * @param msgLen input length
-     * @param output result SHA1 hash
+     * @param msg, msgLen, output
      */
     void derive_key(const uint8_t* hash, uint8_t key, uint8_t* output);
     /**
      * Similar to Microsoft CryptoDeriveKey()
-     * @param pass password
-     * @param passLen passwoed length
-     * @param output result key (hash)
+     * @param pass, passLen, output
      */
     void derive(const uint8_t* pass, unsigned int passLen, uint8_t* output);
     

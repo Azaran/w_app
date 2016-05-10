@@ -51,7 +51,7 @@ public:
     
 
     virtual std::string getVersionText(){
-        return "2.0";
+        return "1.0";
     }
 
 };

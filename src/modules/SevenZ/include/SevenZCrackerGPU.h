@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2014 Jan Schmied
+ * Copyright (C) 2016 Vojtech Vecera
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy 
  * of this software and associated documentation files (the "Software"), to deal 
@@ -38,8 +38,8 @@ public:
     SevenZCrackerGPU(const SevenZCrackerGPU& orig);
     virtual ~SevenZCrackerGPU();
 
-    virtual bool verifyPassword(std::string& pass);
     virtual bool initData();
+    virtual bool verifyPassword(std::string& pass);
 
 private:
     cl::Buffer first_block;

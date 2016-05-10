@@ -162,11 +162,10 @@ protected:
      * @param stream, numPackStreams
      * @return 
      */
-        uint32_t* CRCHdr(std::ifstream *stream, uint64_t numPackStreams, bool skip);
-
+    uint32_t* CRCHdr(std::ifstream *stream, uint64_t numPackStreams, bool skip);
     /**
      * Reads PackInfo header structure for the file stream
-     * @param stream, numPackStreams
+     * @param stream, numPackStreams, skip
      */
     void PackInfoHdr(std::ifstream *stream);
     /**
@@ -190,11 +189,23 @@ protected:
     void printInfo();
     /**
      * LZMA decompressHdrion of data
+     * @param stream, numCoders
      */
     int decompressHdr(ifstream *istream, uint64_t numCoders);
+    /**
+     * Reads SubStreamInfoHdr and searches for CRC entries
+     * @param stream
+     * @return 
+     */
     void SubStreamInfoHdr(ifstream *stream);
-
+    /**
+     * Reads stream saved in the archive which will be used for cracking.      * @param stream
+     */
     void data4Cracking(ifstream *istream);
+    /**
+     * It copies data from the position in the file into the memory buffer 
+     * @param stream, pos, size, buffer
+     */
     void copyStreamToBuffer(ifstream *stream, uint64_t pos, uint64_t size, uint8_t **buffer);
     
 private:

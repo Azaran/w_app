@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2014 Jan Schmied, Vojtech Vecera
+ * Copyright (C) 2014 Jan Schmied, 2016 Vojtech Vecera
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy 
  * of this software and associated documentation files (the "Software"), to deal 
@@ -82,8 +82,11 @@ protected:
      * @return 
      */
     ZIPInitData readOneFile(std::ifstream *stream);
-    
-    
+    /**
+     * Reads Strong Encryption Header from the strean
+     * @param stream, data
+     * @return 
+     */
     uint16_t readStongEncHdr(std::ifstream *stream, ZIPInitData *data);
     /**
      * Removes all files, except the smallest one
