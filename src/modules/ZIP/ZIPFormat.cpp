@@ -290,7 +290,7 @@ CrackerFactory* ZIPFormat::getCPUCracker(){
             }else
                 return NULL;
         case SAES: return new ZIPStAESCrackerCPUFactory(&data);
-        case TDES: return NULL; // new ZIPTDESCrackerCPUFactory(&data);
+        case TDES: return new ZIPTDESCrackerCPUFactory(&data);
 	case CDENC: return NULL;
         default: return NULL;
     }
@@ -337,6 +337,10 @@ ZIPInitData::ZIPInitData(const ZIPInitData& orig){
 	::memcpy(this->encData, orig.encData, orig.encSize);
 	::memcpy(this->erdData, orig.erdData, orig.erdSize);
 	::memcpy(this->ivData, orig.ivData, orig.ivSize);
+    }
+    else {
+	this->encData = new uint8_t;
+	encData = orig.encData;
     }
 }
 
